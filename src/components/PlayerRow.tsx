@@ -1,6 +1,7 @@
 "use client";
 
 import type { Player } from "@/lib/kv";
+import LpGapBox, { type LpGap } from "./LpGapBox";
 
 type RankedEntry = {
   tier: string;
@@ -60,6 +61,7 @@ export default function PlayerRow({
   stats,
   error,
   loading,
+  lpGap,
   expanded,
   onToggle,
 }: {
@@ -68,6 +70,7 @@ export default function PlayerRow({
   stats: Stats;
   error: string | null;
   loading: boolean;
+  lpGap: LpGap;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -119,13 +122,16 @@ export default function PlayerRow({
           )}
         </td>
         <td className="px-4 py-3">
+          <LpGapBox {...lpGap} />
+        </td>
+        <td className="px-4 py-3">
           <DpmBadge player={player} />
         </td>
       </tr>
 
       {expanded && stats?.matches && (
         <tr className="border-b border-white/10 bg-white/[0.02]">
-          <td colSpan={5} className="px-4 py-4">
+          <td colSpan={6} className="px-4 py-4">
             {stats.matches.length === 0 && (
               <p className="text-white/40">Sin partidas recientes</p>
             )}

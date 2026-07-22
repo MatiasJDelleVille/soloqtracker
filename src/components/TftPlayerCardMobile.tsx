@@ -2,6 +2,7 @@
 
 import type { Player } from "@/lib/kv";
 import type { TftStats } from "./TftPlayerRow";
+import LpGapBox, { type LpGap } from "./LpGapBox";
 
 function formatDuration(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -20,6 +21,7 @@ export default function TftPlayerCardMobile({
   stats,
   error,
   loading,
+  lpGap,
   expanded,
   onToggle,
 }: {
@@ -28,6 +30,7 @@ export default function TftPlayerCardMobile({
   stats: TftStats;
   error: string | null;
   loading: boolean;
+  lpGap: LpGap;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -64,6 +67,8 @@ export default function TftPlayerCardMobile({
             stats && <p className="text-sm text-white/40">Sin ranked</p>
           )}
         </div>
+
+        <LpGapBox {...lpGap} />
 
         <a
           href={dpmUrl}

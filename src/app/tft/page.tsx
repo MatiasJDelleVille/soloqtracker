@@ -4,29 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { Player } from "@/lib/kv";
 import TftPlayerRow, { type TftStats } from "@/components/TftPlayerRow";
 import TftPlayerCardMobile from "@/components/TftPlayerCardMobile";
-
-const TIER_ORDER = [
-  "IRON",
-  "BRONZE",
-  "SILVER",
-  "GOLD",
-  "PLATINUM",
-  "EMERALD",
-  "DIAMOND",
-  "MASTER",
-  "GRANDMASTER",
-  "CHALLENGER",
-];
-const RANK_ORDER: Record<string, number> = { IV: 0, III: 1, II: 2, I: 3 };
+import { computeLpGaps, eloScore, totalLp } from "@/lib/rank";
 
 type RankedEntry = NonNullable<NonNullable<TftStats>["ranked"]>;
-
-function eloScore(ranked: RankedEntry | null) {
-  if (!ranked) return -1;
-  const tierIndex = TIER_ORDER.indexOf(ranked.tier);
-  const rankScore = RANK_ORDER[ranked.rank] ?? 0;
-  return tierIndex * 1000 + rankScore * 200 + ranked.leaguePoints;
-}
 
 function winrateScore(ranked: RankedEntry | null) {
   if (!ranked) return -1;
@@ -156,6 +136,19 @@ export default function TftHome() {
     });
   }, [players, statsMap, sortKey, sortDir, filter]);
 
+  const lpGapById = useMemo(() => {
+    const eloSorted = players
+      .slice()
+      .sort((a, b) => eloScore(statsMap[b.id]?.ranked ?? null) - eloScore(statsMap[a.id]?.ranked ?? null));
+    const gaps = computeLpGaps(eloSorted.map((p) => totalLp(statsMap[p.id]?.ranked ?? null)));
+
+    const map: Record<string, { toNext: number | null; toPrevious: number | null }> = {};
+    eloSorted.forEach((p, i) => {
+      map[p.id] = gaps[i];
+    });
+    return map;
+  }, [players, statsMap]);
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#0a0e1a] to-[#111827] px-4 py-12">
       <div className="max-w-4xl mx-auto">
@@ -234,6 +227,9 @@ export default function TftHome() {
                       onClick={() => handleSort("avgPlacement")}
                     />
                     <th className="px-4 py-3 text-left text-white/60 font-medium">
+                      LP hasta
+                    </th>
+                    <th className="px-4 py-3 text-left text-white/60 font-medium">
                       DPM
                     </th>
                   </tr>
@@ -247,6 +243,7 @@ export default function TftHome() {
                       stats={statsMap[p.id] ?? null}
                       error={errorMap[p.id] ?? null}
                       loading={loading}
+                      lpGap={lpGapById[p.id] ?? { toNext: null, toPrevious: null }}
                       expanded={expandedId === p.id}
                       onToggle={() =>
                         setExpandedId((id) => (id === p.id ? null : p.id))
@@ -266,6 +263,7 @@ export default function TftHome() {
                   stats={statsMap[p.id] ?? null}
                   error={errorMap[p.id] ?? null}
                   loading={loading}
+                  lpGap={lpGapById[p.id] ?? { toNext: null, toPrevious: null }}
                   expanded={expandedId === p.id}
                   onToggle={() => setExpandedId((id) => (id === p.id ? null : p.id))}
                 />

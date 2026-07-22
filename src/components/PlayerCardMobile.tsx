@@ -2,6 +2,7 @@
 
 import type { Player } from "@/lib/kv";
 import type { Stats } from "./PlayerRow";
+import LpGapBox, { type LpGap } from "./LpGapBox";
 
 function formatDuration(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -15,6 +16,7 @@ export default function PlayerCardMobile({
   stats,
   error,
   loading,
+  lpGap,
   expanded,
   onToggle,
 }: {
@@ -23,6 +25,7 @@ export default function PlayerCardMobile({
   stats: Stats;
   error: string | null;
   loading: boolean;
+  lpGap: LpGap;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -64,6 +67,8 @@ export default function PlayerCardMobile({
             stats && <p className="text-sm text-white/40">Sin ranked</p>
           )}
         </div>
+
+        <LpGapBox {...lpGap} />
 
         <a
           href={dpmUrl}
