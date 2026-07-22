@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Player } from "@/lib/kv";
-import PlayerRow, { type Stats } from "@/components/PlayerRow";
-import PlayerCardMobile from "@/components/PlayerCardMobile";
+import TftPlayerRow, { type TftStats } from "@/components/TftPlayerRow";
+import TftPlayerCardMobile from "@/components/TftPlayerCardMobile";
 
 const TIER_ORDER = [
   "IRON",
@@ -19,7 +19,7 @@ const TIER_ORDER = [
 ];
 const RANK_ORDER: Record<string, number> = { IV: 0, III: 1, II: 2, I: 3 };
 
-type RankedEntry = NonNullable<NonNullable<Stats>["ranked"]>;
+type RankedEntry = NonNullable<NonNullable<TftStats>["ranked"]>;
 
 function eloScore(ranked: RankedEntry | null) {
   if (!ranked) return -1;
@@ -34,7 +34,13 @@ function winrateScore(ranked: RankedEntry | null) {
   return total > 0 ? ranked.wins / total : -1;
 }
 
-type SortKey = "winrate" | "elo";
+function avgPlacement(stats: TftStats) {
+  if (!stats?.matches || stats.matches.length === 0) return null;
+  const sum = stats.matches.reduce((acc, m) => acc + m.placement, 0);
+  return sum / stats.matches.length;
+}
+
+type SortKey = "winrate" | "elo" | "avgPlacement";
 type SortDir = "asc" | "desc";
 
 function SortHeader({
@@ -61,9 +67,9 @@ function SortHeader({
   );
 }
 
-export default function Home() {
+export default function TftHome() {
   const [players, setPlayers] = useState<Player[]>([]);
-  const [statsMap, setStatsMap] = useState<Record<string, Stats>>({});
+  const [statsMap, setStatsMap] = useState<Record<string, TftStats>>({});
   const [errorMap, setErrorMap] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("winrate");
@@ -72,7 +78,7 @@ export default function Home() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/players")
+    fetch("/api/tft/players")
       .then((res) => res.json())
       .then(async (data) => {
         const list: Player[] = data.players ?? [];
@@ -80,18 +86,18 @@ export default function Home() {
 
         const results = await Promise.all(
           list.map((p) =>
-            fetch(`/api/stats?puuid=${p.puuid}&region=${p.region}`)
+            fetch(`/api/tft/stats?puuid=${p.puuid}&region=${p.region}`)
               .then((res) => res.json())
               .then((d) => ({
                 id: p.id,
-                stats: d.error ? null : (d as Stats),
+                stats: d.error ? null : (d as TftStats),
                 error: (d.error as string | undefined) ?? null,
               }))
               .catch(() => ({ id: p.id, stats: null, error: "No se pudo cargar" }))
           )
         );
 
-        const nextStats: Record<string, Stats> = {};
+        const nextStats: Record<string, TftStats> = {};
         const nextErrors: Record<string, string | null> = {};
         for (const r of results) {
           nextStats[r.id] = r.stats;
@@ -125,7 +131,14 @@ export default function Home() {
 
       if (sortKey === "winrate")
         return dirFactor * (winrateScore(rankedA) - winrateScore(rankedB));
-      return dirFactor * (eloScore(rankedA) - eloScore(rankedB));
+      if (sortKey === "elo") return dirFactor * (eloScore(rankedA) - eloScore(rankedB));
+
+      const avgA = avgPlacement(statsMap[a.id] ?? null);
+      const avgB = avgPlacement(statsMap[b.id] ?? null);
+      // Lower average placement is better, so invert vs. the usual "higher is better" scoring.
+      const scoreA = avgA === null ? -100 : -avgA;
+      const scoreB = avgB === null ? -100 : -avgB;
+      return dirFactor * (scoreA - scoreB);
     });
   }, [players, statsMap, sortKey, sortDir, filter]);
 
@@ -133,12 +146,12 @@ export default function Home() {
     <main className="min-h-screen bg-gradient-to-b from-[#0a0e1a] to-[#111827] px-4 py-12">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-3xl font-bold text-white">SoloQ Tracker</h1>
-          <a href="/tft" className="text-sm text-white/40 hover:text-white transition">
-            Ver TFT →
+          <h1 className="text-3xl font-bold text-white">TFT Tracker</h1>
+          <a href="/" className="text-sm text-white/40 hover:text-white transition">
+            ← Ver SoloQ
           </a>
         </div>
-        <p className="text-white/40 mb-8">Progreso de la banda en ranked</p>
+        <p className="text-white/40 mb-8">Progreso de la banda en ranked TFT</p>
 
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <input
@@ -158,6 +171,9 @@ export default function Home() {
             <option value="elo" className="bg-[#111827]">
               Ordenar por elo
             </option>
+            <option value="avgPlacement" className="bg-[#111827]">
+              Ordenar por posición prom.
+            </option>
           </select>
         </div>
 
@@ -165,7 +181,7 @@ export default function Home() {
 
         {!loading && players.length === 0 && (
           <p className="text-white/40">
-            Todavía no hay jugadores cargados. Andá a /admin para agregar.
+            Todavía no hay jugadores cargados. Andá a /tft/admin para agregar.
           </p>
         )}
 
@@ -197,6 +213,12 @@ export default function Home() {
                       dir={sortDir}
                       onClick={() => handleSort("winrate")}
                     />
+                    <SortHeader
+                      label="Pos. prom."
+                      active={sortKey === "avgPlacement"}
+                      dir={sortDir}
+                      onClick={() => handleSort("avgPlacement")}
+                    />
                     <th className="px-4 py-3 text-left text-white/60 font-medium">
                       DPM
                     </th>
@@ -204,7 +226,7 @@ export default function Home() {
                 </thead>
                 <tbody>
                   {sorted.map((p, i) => (
-                    <PlayerRow
+                    <TftPlayerRow
                       key={p.id}
                       rank={i + 1}
                       player={p}
@@ -223,7 +245,7 @@ export default function Home() {
 
             <div className="md:hidden flex flex-col gap-3">
               {sorted.map((p, i) => (
-                <PlayerCardMobile
+                <TftPlayerCardMobile
                   key={p.id}
                   rank={i + 1}
                   player={p}
