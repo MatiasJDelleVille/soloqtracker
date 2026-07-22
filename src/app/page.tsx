@@ -66,35 +66,40 @@ export default function Home() {
   }, [sortKey, sortDir]);
 
   useEffect(() => {
-    fetch("/api/players")
-      .then((res) => res.json())
-      .then(async (data) => {
-        const list: Player[] = data.players ?? [];
-        setPlayers(list);
+    const loadAll = () =>
+      fetch("/api/players")
+        .then((res) => res.json())
+        .then(async (data) => {
+          const list: Player[] = data.players ?? [];
+          setPlayers(list);
 
-        const results = await Promise.all(
-          list.map((p) =>
-            fetch(`/api/stats?puuid=${p.puuid}&region=${p.region}`)
-              .then((res) => res.json())
-              .then((d) => ({
-                id: p.id,
-                stats: d.error ? null : (d as Stats),
-                error: (d.error as string | undefined) ?? null,
-              }))
-              .catch(() => ({ id: p.id, stats: null, error: "No se pudo cargar" }))
-          )
-        );
+          const results = await Promise.all(
+            list.map((p) =>
+              fetch(`/api/stats?puuid=${p.puuid}&region=${p.region}`)
+                .then((res) => res.json())
+                .then((d) => ({
+                  id: p.id,
+                  stats: d.error ? null : (d as Stats),
+                  error: (d.error as string | undefined) ?? null,
+                }))
+                .catch(() => ({ id: p.id, stats: null, error: "No se pudo cargar" }))
+            )
+          );
 
-        const nextStats: Record<string, Stats> = {};
-        const nextErrors: Record<string, string | null> = {};
-        for (const r of results) {
-          nextStats[r.id] = r.stats;
-          nextErrors[r.id] = r.error;
-        }
-        setStatsMap(nextStats);
-        setErrorMap(nextErrors);
-      })
-      .finally(() => setLoading(false));
+          const nextStats: Record<string, Stats> = {};
+          const nextErrors: Record<string, string | null> = {};
+          for (const r of results) {
+            nextStats[r.id] = r.stats;
+            nextErrors[r.id] = r.error;
+          }
+          setStatsMap(nextStats);
+          setErrorMap(nextErrors);
+        })
+        .finally(() => setLoading(false));
+
+    loadAll();
+    const interval = setInterval(loadAll, 30 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleSort = (key: SortKey) => {
