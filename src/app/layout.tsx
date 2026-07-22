@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "SoloQ Tracker",
-  description: "Progreso de la banda en ranked SoloQ",
+  description: "Progreso de kukamigos en el SoloQ Challenge",
 };
 
 export default function RootLayout({

@@ -72,10 +72,24 @@ export default function TftHome() {
   const [statsMap, setStatsMap] = useState<Record<string, TftStats>>({});
   const [errorMap, setErrorMap] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>("winrate");
+  const [sortKey, setSortKey] = useState<SortKey>("elo");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filter, setFilter] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("tft-sort");
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved) as { key?: SortKey; dir?: SortDir };
+      if (parsed.key) setSortKey(parsed.key);
+      if (parsed.dir) setSortDir(parsed.dir);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("tft-sort", JSON.stringify({ key: sortKey, dir: sortDir }));
+  }, [sortKey, sortDir]);
 
   useEffect(() => {
     fetch("/api/tft/players")
@@ -151,7 +165,7 @@ export default function TftHome() {
             ← Ver SoloQ
           </a>
         </div>
-        <p className="text-white/40 mb-8">Progreso de la banda en ranked TFT</p>
+        <p className="text-white/40 mb-8">Progreso de kukamigos en el SoloQ Challenge</p>
 
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <input
