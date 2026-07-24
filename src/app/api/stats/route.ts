@@ -5,6 +5,8 @@ import {
   getRecentRankedMatches,
   getSummonerProfile,
 } from "@/lib/riot";
+import { getLpChange } from "@/lib/kv";
+import { totalLp } from "@/lib/rank";
 
 export async function GET(req: NextRequest) {
   const puuid = req.nextUrl.searchParams.get("puuid");
@@ -22,11 +24,16 @@ export async function GET(req: NextRequest) {
       getLatestDdragonVersion(),
     ]);
 
+    const currentTotalLp = totalLp(ranked);
+    const lpChange =
+      currentTotalLp !== null ? await getLpChange(puuid, currentTotalLp) : null;
+
     return NextResponse.json({
       ranked,
       matches,
       profileIconId: summoner.profileIconId,
       ddragonVersion,
+      lpChange,
     });
   } catch (err) {
     return NextResponse.json(

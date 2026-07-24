@@ -46,3 +46,19 @@ export async function removePlayer(key: string, id: string): Promise<void> {
     list.filter((p) => p.id !== id)
   );
 }
+
+/**
+ * Tracks LP over time so we can show "LP change since last check". Riot's API
+ * only exposes current LP, not a per-match history, so this is a snapshot
+ * comparison rather than a true per-game delta.
+ */
+export async function getLpChange(
+  puuid: string,
+  currentTotalLp: number
+): Promise<number | null> {
+  const snapKey = `lp-snapshot:${puuid}`;
+  const previous = await redis.get<number>(snapKey);
+  await redis.set(snapKey, currentTotalLp);
+  if (previous === null || previous === undefined) return null;
+  return currentTotalLp - previous;
+}

@@ -3,6 +3,7 @@
 import type { Player } from "@/lib/kv";
 import type { Stats } from "./PlayerRow";
 import LpGapBox, { type LpGap } from "./LpGapBox";
+import MatchScoreboard from "./MatchScoreboard";
 
 function formatDuration(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -62,6 +63,16 @@ export default function PlayerCardMobile({
           {stats?.ranked ? (
             <p className="text-sm text-white/60">
               {stats.ranked.tier} {stats.ranked.rank} ({stats.ranked.leaguePoints} LP)
+              {stats.lpChange !== null && (
+                <span
+                  className={`ml-1.5 font-medium ${
+                    stats.lpChange >= 0 ? "text-emerald-400" : "text-red-400"
+                  }`}
+                >
+                  ({stats.lpChange >= 0 ? "+" : ""}
+                  {stats.lpChange})
+                </span>
+              )}
             </p>
           ) : (
             stats && <p className="text-sm text-white/40">Sin ranked</p>
@@ -96,40 +107,16 @@ export default function PlayerCardMobile({
       )}
 
       {expanded && stats?.matches && (
-        <div className="border-t border-white/10 p-3 flex flex-col gap-2">
+        <div className="border-t border-white/10 p-3 flex flex-col gap-3">
           {stats.matches.length === 0 && (
             <p className="text-white/40 px-1">Sin partidas recientes</p>
           )}
           {stats.matches.map((m) => (
-            <div
-              key={m.matchId}
-              className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <span
-                  className={`w-1.5 h-8 rounded-full shrink-0 ${
-                    m.win ? "bg-emerald-400" : "bg-red-400"
-                  }`}
-                />
-                <div className="min-w-0">
-                  <p className="text-white font-medium truncate">{m.championName}</p>
-                  <p className="text-sm text-white/40">
-                    {formatDuration(m.durationSeconds)}
-                  </p>
-                </div>
-              </div>
-              <div className="text-right shrink-0 pl-2">
-                <p className="text-white/80">
-                  {m.kills}/{m.deaths}/{m.assists}
-                </p>
-                <p
-                  className={`text-sm font-medium ${
-                    m.win ? "text-emerald-400" : "text-red-400"
-                  }`}
-                >
-                  {m.win ? "Victoria" : "Derrota"}
-                </p>
-              </div>
+            <div key={m.matchId} className="rounded-lg bg-white/5 p-3">
+              <p className="text-xs text-white/40 mb-2">
+                {m.championName} · {formatDuration(m.durationSeconds)}
+              </p>
+              <MatchScoreboard participants={m.participants} trackedPuuid={player.puuid} />
             </div>
           ))}
         </div>

@@ -2,6 +2,7 @@
 
 import type { Player } from "@/lib/kv";
 import LpGapBox, { type LpGap } from "./LpGapBox";
+import MatchScoreboard, { type ScoreboardParticipant } from "./MatchScoreboard";
 
 type RankedEntry = {
   tier: string;
@@ -20,6 +21,7 @@ type MatchSummary = {
   assists: number;
   durationSeconds: number;
   gameEndTimestamp: number;
+  participants: ScoreboardParticipant[];
 };
 
 export type Stats = {
@@ -27,6 +29,7 @@ export type Stats = {
   matches: MatchSummary[];
   profileIconId: number;
   ddragonVersion: string;
+  lpChange: number | null;
 } | null;
 
 function formatDuration(seconds: number) {
@@ -105,11 +108,25 @@ export default function PlayerRow({
           </div>
         </td>
         <td className="px-4 py-3 text-white/70">
-          {stats?.ranked
-            ? `${stats.ranked.tier} ${stats.ranked.rank} (${stats.ranked.leaguePoints} LP)`
-            : stats
-              ? "Sin ranked"
-              : ""}
+          {stats?.ranked ? (
+            <>
+              {stats.ranked.tier} {stats.ranked.rank} ({stats.ranked.leaguePoints} LP)
+              {stats.lpChange !== null && (
+                <span
+                  className={`ml-1.5 text-xs font-medium ${
+                    stats.lpChange >= 0 ? "text-emerald-400" : "text-red-400"
+                  }`}
+                >
+                  ({stats.lpChange >= 0 ? "+" : ""}
+                  {stats.lpChange})
+                </span>
+              )}
+            </>
+          ) : stats ? (
+            "Sin ranked"
+          ) : (
+            ""
+          )}
         </td>
         <td className="px-4 py-3">
           {stats?.ranked && (
@@ -135,37 +152,13 @@ export default function PlayerRow({
             {stats.matches.length === 0 && (
               <p className="text-white/40">Sin partidas recientes</p>
             )}
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               {stats.matches.map((m) => (
-                <div
-                  key={m.matchId}
-                  className="flex items-center justify-between rounded-lg bg-white/5 px-4 py-2"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`w-1.5 h-8 rounded-full ${
-                        m.win ? "bg-emerald-400" : "bg-red-400"
-                      }`}
-                    />
-                    <div>
-                      <p className="text-white font-medium">{m.championName}</p>
-                      <p className="text-sm text-white/40">
-                        {formatDuration(m.durationSeconds)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-white/80">
-                      {m.kills}/{m.deaths}/{m.assists}
-                    </p>
-                    <p
-                      className={`text-sm font-medium ${
-                        m.win ? "text-emerald-400" : "text-red-400"
-                      }`}
-                    >
-                      {m.win ? "Victoria" : "Derrota"}
-                    </p>
-                  </div>
+                <div key={m.matchId} className="rounded-lg bg-white/5 p-3">
+                  <p className="text-xs text-white/40 mb-2">
+                    {m.championName} · {formatDuration(m.durationSeconds)}
+                  </p>
+                  <MatchScoreboard participants={m.participants} trackedPuuid={player.puuid} />
                 </div>
               ))}
             </div>
