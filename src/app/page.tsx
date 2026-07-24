@@ -98,7 +98,7 @@ export default function Home() {
         .finally(() => setLoading(false));
 
     loadAll();
-    const interval = setInterval(loadAll, 30 * 60 * 1000);
+    const interval = setInterval(loadAll, 20 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
