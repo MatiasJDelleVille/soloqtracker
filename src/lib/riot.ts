@@ -144,13 +144,13 @@ export async function getRuneStyleIconUrl(styleId: number): Promise<string | nul
 /** Stat shard perk ids aren't in Data Dragon's runesReforged.json (only tree
  * runes are), so this uses Community Dragon's stable static asset paths. */
 const STAT_SHARD_ICONS: Record<number, string> = {
-  5008: "statmods_adaptiveforceicon.png",
-  5005: "statmods_attackspeedicon.png",
+  5008: "statmodsadaptiveforceicon.png",
+  5005: "statmodsattackspeedicon.png",
   5007: "statmodscdrscalingicon.png",
   5002: "statmodsarmoricon.png",
   5003: "statmodsmagicresicon.png",
-  5001: "statmodshealthscalingicon.png",
-  5011: "statmodshealthplusicon.png",
+  5001: "statmodshealthplusicon.png",
+  5011: "statmodshealthscalingicon.png",
   5013: "statmodstenacityicon.png",
 };
 
