@@ -63,16 +63,6 @@ export default function PlayerCardMobile({
           {stats?.ranked ? (
             <p className="text-sm text-white/60">
               {stats.ranked.tier} {stats.ranked.rank} ({stats.ranked.leaguePoints} LP)
-              {stats.lpChange !== null && (
-                <span
-                  className={`ml-1.5 font-medium ${
-                    stats.lpChange >= 0 ? "text-emerald-400" : "text-red-400"
-                  }`}
-                >
-                  ({stats.lpChange >= 0 ? "+" : ""}
-                  {stats.lpChange})
-                </span>
-              )}
             </p>
           ) : (
             stats && <p className="text-sm text-white/40">Sin ranked</p>
@@ -112,9 +102,19 @@ export default function PlayerCardMobile({
             <p className="text-white/40 px-1">Sin partidas recientes</p>
           )}
           {stats.matches.map((m) => (
-            <div key={m.matchId} className="rounded-lg bg-white/5 p-3">
+            <div key={m.matchId} className="rounded-lg bg-black/20 border border-white/10 p-3">
               <p className="text-xs text-white/40 mb-2">
                 {m.championName} · {formatDuration(m.durationSeconds)}
+                {m.lpChange !== null && (
+                  <span
+                    className={`ml-2 font-medium ${
+                      m.lpChange >= 0 ? "text-emerald-400" : "text-red-400"
+                    }`}
+                  >
+                    {m.lpChange >= 0 ? "+" : ""}
+                    {m.lpChange} LP
+                  </span>
+                )}
               </p>
               <MatchScoreboard participants={m.participants} trackedPuuid={player.puuid} />
             </div>

@@ -5,7 +5,7 @@ import {
   getRecentRankedMatches,
   getSummonerProfile,
 } from "@/lib/riot";
-import { getLpChange } from "@/lib/kv";
+import { trackLpPerMatch } from "@/lib/kv";
 import { totalLp } from "@/lib/rank";
 
 export async function GET(req: NextRequest) {
@@ -25,15 +25,25 @@ export async function GET(req: NextRequest) {
     ]);
 
     const currentTotalLp = totalLp(ranked);
-    const lpChange =
-      currentTotalLp !== null ? await getLpChange(puuid, currentTotalLp) : null;
+    const lpDeltas =
+      currentTotalLp !== null
+        ? await trackLpPerMatch(
+            puuid,
+            matches.map((m) => m.matchId),
+            currentTotalLp
+          )
+        : {};
+
+    const matchesWithLp = matches.map((m) => ({
+      ...m,
+      lpChange: lpDeltas[m.matchId] ?? null,
+    }));
 
     return NextResponse.json({
       ranked,
-      matches,
+      matches: matchesWithLp,
       profileIconId: summoner.profileIconId,
       ddragonVersion,
-      lpChange,
     });
   } catch (err) {
     return NextResponse.json(

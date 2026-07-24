@@ -141,6 +141,26 @@ export async function getRuneStyleIconUrl(styleId: number): Promise<string | nul
   return icon ? `https://ddragon.leagueoflegends.com/cdn/img/${icon}` : null;
 }
 
+/** Stat shard perk ids aren't in Data Dragon's runesReforged.json (only tree
+ * runes are), so this uses Community Dragon's stable static asset paths. */
+const STAT_SHARD_ICONS: Record<number, string> = {
+  5008: "statmods_adaptiveforceicon.png",
+  5005: "statmods_attackspeedicon.png",
+  5007: "statmodscdrscalingicon.png",
+  5002: "statmodsarmoricon.png",
+  5003: "statmodsmagicresicon.png",
+  5001: "statmodshealthscalingicon.png",
+  5011: "statmodshealthplusicon.png",
+  5013: "statmodstenacityicon.png",
+};
+
+function getStatShardIconUrl(perkId: number): string | null {
+  const file = STAT_SHARD_ICONS[perkId];
+  return file
+    ? `https://raw.communitydragon.org/latest/game/assets/perks/statmods/${file}`
+    : null;
+}
+
 export async function getRankedEntries(puuid: string, platform: string) {
   const entries = (await riotFetch(
     `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${puuid}`
@@ -168,8 +188,13 @@ export type ScoreboardParticipant = {
   killParticipation: number;
   teamId: number;
   win: boolean;
+  itemIconUrls: string[];
   keystoneIconUrl: string | null;
   secondaryStyleIconUrl: string | null;
+  primaryStyleIconUrl: string | null;
+  primaryRuneIconUrls: string[];
+  secondaryRuneIconUrls: string[];
+  statShardIconUrls: string[];
 };
 
 export async function getRecentRankedMatches(
@@ -205,6 +230,8 @@ export async function getRecentRankedMatches(
 
       const durationMinutes = match.info.gameDuration / 60;
 
+      const ddragonVersion = await getLatestDdragonVersion();
+
       const participants: ScoreboardParticipant[] = await Promise.all(
         allParticipants.map(async (p) => {
           const cs = p.totalMinionsKilled + p.neutralMinionsKilled;
@@ -212,15 +239,39 @@ export async function getRecentRankedMatches(
             teamKills[p.teamId] > 0
               ? Math.round(((p.kills + p.assists) / teamKills[p.teamId]) * 100)
               : 0;
-          const keystoneId = p.perks?.styles?.[0]?.selections?.[0]?.perk;
+
+          const primarySelections: number[] =
+            p.perks?.styles?.[0]?.selections?.map((s: { perk: number }) => s.perk) ?? [];
+          const secondarySelections: number[] =
+            p.perks?.styles?.[1]?.selections?.map((s: { perk: number }) => s.perk) ?? [];
+          const primaryStyleId = p.perks?.styles?.[0]?.style;
           const secondaryStyleId = p.perks?.styles?.[1]?.style;
+          const shardIds: number[] = p.perks?.statPerks
+            ? [p.perks.statPerks.offense, p.perks.statPerks.flex, p.perks.statPerks.defense]
+            : [];
+
+          const itemIds: number[] = [
+            p.item0,
+            p.item1,
+            p.item2,
+            p.item3,
+            p.item4,
+            p.item5,
+            p.item6,
+          ].filter((id) => id && id !== 0);
+
+          const [primaryRuneIconUrls, secondaryRuneIconUrls] = await Promise.all([
+            Promise.all(primarySelections.map((id) => getRuneIconUrl(id))),
+            Promise.all(secondarySelections.map((id) => getRuneIconUrl(id))),
+          ]);
+
           return {
             puuid: p.puuid,
             name: p.riotIdGameName
               ? `${p.riotIdGameName}#${p.riotIdTagline}`
               : p.summonerName || "—",
             championIconUrl: championMap[p.championId]
-              ? `https://ddragon.leagueoflegends.com/cdn/${await getLatestDdragonVersion()}/img/champion/${championMap[p.championId]}.png`
+              ? `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/champion/${championMap[p.championId]}.png`
               : null,
             kills: p.kills,
             deaths: p.deaths,
@@ -231,10 +282,21 @@ export async function getRecentRankedMatches(
             killParticipation: kp,
             teamId: p.teamId,
             win: p.win,
-            keystoneIconUrl: keystoneId ? await getRuneIconUrl(keystoneId) : null,
+            itemIconUrls: itemIds.map(
+              (id) => `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/item/${id}.png`
+            ),
+            keystoneIconUrl: primaryRuneIconUrls[0] ?? null,
             secondaryStyleIconUrl: secondaryStyleId
               ? await getRuneStyleIconUrl(secondaryStyleId)
               : null,
+            primaryStyleIconUrl: primaryStyleId
+              ? await getRuneStyleIconUrl(primaryStyleId)
+              : null,
+            primaryRuneIconUrls: primaryRuneIconUrls.filter((u): u is string => u !== null),
+            secondaryRuneIconUrls: secondaryRuneIconUrls.filter((u): u is string => u !== null),
+            statShardIconUrls: shardIds
+              .map((id) => getStatShardIconUrl(id))
+              .filter((u): u is string => u !== null),
           };
         })
       );

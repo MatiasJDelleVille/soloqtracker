@@ -22,6 +22,7 @@ type MatchSummary = {
   durationSeconds: number;
   gameEndTimestamp: number;
   participants: ScoreboardParticipant[];
+  lpChange: number | null;
 };
 
 export type Stats = {
@@ -29,7 +30,6 @@ export type Stats = {
   matches: MatchSummary[];
   profileIconId: number;
   ddragonVersion: string;
-  lpChange: number | null;
 } | null;
 
 function formatDuration(seconds: number) {
@@ -108,25 +108,11 @@ export default function PlayerRow({
           </div>
         </td>
         <td className="px-4 py-3 text-white/70">
-          {stats?.ranked ? (
-            <>
-              {stats.ranked.tier} {stats.ranked.rank} ({stats.ranked.leaguePoints} LP)
-              {stats.lpChange !== null && (
-                <span
-                  className={`ml-1.5 text-xs font-medium ${
-                    stats.lpChange >= 0 ? "text-emerald-400" : "text-red-400"
-                  }`}
-                >
-                  ({stats.lpChange >= 0 ? "+" : ""}
-                  {stats.lpChange})
-                </span>
-              )}
-            </>
-          ) : stats ? (
-            "Sin ranked"
-          ) : (
-            ""
-          )}
+          {stats?.ranked
+            ? `${stats.ranked.tier} ${stats.ranked.rank} (${stats.ranked.leaguePoints} LP)`
+            : stats
+              ? "Sin ranked"
+              : ""}
         </td>
         <td className="px-4 py-3">
           {stats?.ranked && (
@@ -154,9 +140,19 @@ export default function PlayerRow({
             )}
             <div className="flex flex-col gap-3">
               {stats.matches.map((m) => (
-                <div key={m.matchId} className="rounded-lg bg-white/5 p-3">
+                <div key={m.matchId} className="rounded-lg bg-black/20 border border-white/10 p-3">
                   <p className="text-xs text-white/40 mb-2">
                     {m.championName} · {formatDuration(m.durationSeconds)}
+                    {m.lpChange !== null && (
+                      <span
+                        className={`ml-2 font-medium ${
+                          m.lpChange >= 0 ? "text-emerald-400" : "text-red-400"
+                        }`}
+                      >
+                        {m.lpChange >= 0 ? "+" : ""}
+                        {m.lpChange} LP
+                      </span>
+                    )}
                   </p>
                   <MatchScoreboard participants={m.participants} trackedPuuid={player.puuid} />
                 </div>
