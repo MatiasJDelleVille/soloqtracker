@@ -143,7 +143,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#0a0e1a] to-[#111827] px-4 py-12">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-3xl font-bold text-white">SoloQ Tracker</h1>
           <a href="/tft" className="text-sm text-white/40 hover:text-white transition">

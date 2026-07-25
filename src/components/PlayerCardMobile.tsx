@@ -11,6 +11,15 @@ function formatDuration(seconds: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+function formatMatchDate(timestampMs: number) {
+  return new Date(timestampMs).toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function PlayerCardMobile({
   rank,
   player,
@@ -104,7 +113,8 @@ export default function PlayerCardMobile({
           {stats.matches.map((m) => (
             <div key={m.matchId} className="rounded-lg bg-black/20 border border-white/10 p-3">
               <p className="text-xs text-white/40 mb-2">
-                {m.championName} · {formatDuration(m.durationSeconds)}
+                {m.championName} · {formatDuration(m.durationSeconds)} ·{" "}
+                {formatMatchDate(m.gameEndTimestamp)}
                 {m.lpChange !== null && (
                   <span
                     className={`ml-2 font-medium ${

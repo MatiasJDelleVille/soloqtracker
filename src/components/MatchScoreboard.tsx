@@ -169,27 +169,29 @@ export default function MatchScoreboard({
       </div>
 
       {tab === "general" && (
-        <div className="flex flex-col md:flex-row gap-4">
-          {teamIds.map((teamId) => {
-            const teamParticipants = participants.filter((p) => p.teamId === teamId);
-            const win = teamParticipants[0]?.win;
-            return (
-              <div key={teamId} className="flex-1 min-w-0">
-                <p
-                  className={`text-sm font-semibold mb-1 ${
-                    win ? "text-emerald-400" : "text-red-400"
-                  }`}
-                >
-                  {win ? "Victoria" : "Derrota"}
-                </p>
-                <div className="flex flex-col gap-1">
-                  {teamParticipants.map((p) => (
-                    <GeneralRow key={p.puuid} p={p} tracked={p.puuid === trackedPuuid} />
-                  ))}
+        <div className="overflow-x-auto">
+          <div className="flex flex-col md:flex-row gap-4 w-max min-w-full">
+            {teamIds.map((teamId) => {
+              const teamParticipants = participants.filter((p) => p.teamId === teamId);
+              const win = teamParticipants[0]?.win;
+              return (
+                <div key={teamId} className="w-[26rem] shrink-0">
+                  <p
+                    className={`text-sm font-semibold mb-1 ${
+                      win ? "text-emerald-400" : "text-red-400"
+                    }`}
+                  >
+                    {win ? "Victoria" : "Derrota"}
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {teamParticipants.map((p) => (
+                      <GeneralRow key={p.puuid} p={p} tracked={p.puuid === trackedPuuid} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
