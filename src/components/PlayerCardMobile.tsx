@@ -3,7 +3,7 @@
 import type { Player } from "@/lib/kv";
 import type { Stats } from "./PlayerRow";
 import LpGapBox, { type LpGap } from "./LpGapBox";
-import MatchItem from "./MatchItem";
+import MatchList from "./MatchList";
 
 export default function PlayerCardMobile({
   rank,
@@ -14,6 +14,7 @@ export default function PlayerCardMobile({
   lpGap,
   expanded,
   onToggle,
+  onLoadMoreMatches,
 }: {
   rank: number;
   player: Player;
@@ -23,6 +24,7 @@ export default function PlayerCardMobile({
   lpGap: LpGap;
   expanded: boolean;
   onToggle: () => void;
+  onLoadMoreMatches: () => Promise<number>;
 }) {
   const total = stats?.ranked ? stats.ranked.wins + stats.ranked.losses : 0;
   const winrate = total > 0 ? Math.round((stats!.ranked!.wins / total) * 100) : null;
@@ -91,13 +93,12 @@ export default function PlayerCardMobile({
       )}
 
       {expanded && stats?.matches && (
-        <div className="border-t border-white/10 p-3 flex flex-col gap-3">
-          {stats.matches.length === 0 && (
-            <p className="text-white/40 px-1">Sin partidas recientes</p>
-          )}
-          {stats.matches.map((m) => (
-            <MatchItem key={m.matchId} match={m} trackedPuuid={player.puuid} />
-          ))}
+        <div className="border-t border-white/10 p-3">
+          <MatchList
+            matches={stats.matches}
+            trackedPuuid={player.puuid}
+            onLoadMore={onLoadMoreMatches}
+          />
         </div>
       )}
     </div>

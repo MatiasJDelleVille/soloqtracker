@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Player } from "@/lib/kv";
 import PlayerRow, { type Stats } from "@/components/PlayerRow";
+import type { MatchSummary } from "@/components/MatchItem";
 import PlayerCardMobile from "@/components/PlayerCardMobile";
 import { computeLpGaps, eloScore, totalLp } from "@/lib/rank";
 
@@ -128,6 +129,28 @@ export default function Home() {
     });
   }, [players, statsMap, sortKey, sortDir, filter]);
 
+  const loadMoreMatches = async (player: Player): Promise<number> => {
+    const current = statsMap[player.id];
+    if (!current) return 0;
+
+    const res = await fetch(
+      `/api/stats?puuid=${player.puuid}&region=${player.region}&start=${current.matches.length}`
+    );
+    const data = await res.json();
+    if (data.error) return 0;
+
+    const newMatches = (data.matches ?? []) as MatchSummary[];
+    setStatsMap((prev) => {
+      const prevStats = prev[player.id];
+      if (!prevStats) return prev;
+      return {
+        ...prev,
+        [player.id]: { ...prevStats, matches: [...prevStats.matches, ...newMatches] },
+      };
+    });
+    return newMatches.length;
+  };
+
   const lpGapById = useMemo(() => {
     const eloSorted = players
       .slice()
@@ -231,6 +254,7 @@ export default function Home() {
                       onToggle={() =>
                         setExpandedId((id) => (id === p.id ? null : p.id))
                       }
+                      onLoadMoreMatches={() => loadMoreMatches(p)}
                     />
                   ))}
                 </tbody>
@@ -249,6 +273,7 @@ export default function Home() {
                   lpGap={lpGapById[p.id] ?? { toNext: null, toPrevious: null }}
                   expanded={expandedId === p.id}
                   onToggle={() => setExpandedId((id) => (id === p.id ? null : p.id))}
+                  onLoadMoreMatches={() => loadMoreMatches(p)}
                 />
               ))}
             </div>

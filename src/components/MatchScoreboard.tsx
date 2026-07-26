@@ -8,6 +8,7 @@ export type ScoreboardParticipant = {
   championIconUrl: string | null;
   summoner1IconUrl: string | null;
   summoner2IconUrl: string | null;
+  position: string | null;
   kills: number;
   deaths: number;
   assists: number;

@@ -2,7 +2,8 @@
 
 import type { Player } from "@/lib/kv";
 import LpGapBox, { type LpGap } from "./LpGapBox";
-import MatchItem, { type MatchSummary } from "./MatchItem";
+import MatchList from "./MatchList";
+import type { MatchSummary } from "./MatchItem";
 
 type RankedEntry = {
   tier: string;
@@ -48,6 +49,7 @@ export default function PlayerRow({
   lpGap,
   expanded,
   onToggle,
+  onLoadMoreMatches,
 }: {
   rank: number;
   player: Player;
@@ -57,6 +59,7 @@ export default function PlayerRow({
   lpGap: LpGap;
   expanded: boolean;
   onToggle: () => void;
+  onLoadMoreMatches: () => Promise<number>;
 }) {
   const total = stats?.ranked ? stats.ranked.wins + stats.ranked.losses : 0;
   const winrate = total > 0 ? Math.round((stats!.ranked!.wins / total) * 100) : null;
@@ -116,14 +119,11 @@ export default function PlayerRow({
       {expanded && stats?.matches && (
         <tr className="border-b border-white/10 bg-white/[0.02]">
           <td colSpan={6} className="px-4 py-4">
-            {stats.matches.length === 0 && (
-              <p className="text-white/40">Sin partidas recientes</p>
-            )}
-            <div className="flex flex-col gap-2">
-              {stats.matches.map((m) => (
-                <MatchItem key={m.matchId} match={m} trackedPuuid={player.puuid} />
-              ))}
-            </div>
+            <MatchList
+              matches={stats.matches}
+              trackedPuuid={player.puuid}
+              onLoadMore={onLoadMoreMatches}
+            />
           </td>
         </tr>
       )}

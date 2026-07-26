@@ -8,9 +8,14 @@ import {
 import { trackLpPerMatch } from "@/lib/kv";
 import { totalLp } from "@/lib/rank";
 
+const INITIAL_MATCH_COUNT = 10;
+const PAGE_MATCH_COUNT = 5;
+
 export async function GET(req: NextRequest) {
   const puuid = req.nextUrl.searchParams.get("puuid");
   const region = req.nextUrl.searchParams.get("region");
+  const start = Number(req.nextUrl.searchParams.get("start") ?? "0");
+  const count = start === 0 ? INITIAL_MATCH_COUNT : PAGE_MATCH_COUNT;
 
   if (!puuid || !region) {
     return NextResponse.json({ error: "Faltan parámetros" }, { status: 400 });
@@ -19,14 +24,16 @@ export async function GET(req: NextRequest) {
   try {
     const [ranked, matches, summoner, ddragonVersion] = await Promise.all([
       getRankedEntries(puuid, region),
-      getRecentRankedMatches(puuid, region, 5),
+      getRecentRankedMatches(puuid, region, count, start),
       getSummonerProfile(puuid, region),
       getLatestDdragonVersion(),
     ]);
 
+    // LP deltas are only attributable relative to the newest-match pointer,
+    // so tracking is only meaningful for the first page (start === 0).
     const currentTotalLp = totalLp(ranked);
     const lpDeltas =
-      currentTotalLp !== null
+      start === 0 && currentTotalLp !== null
         ? await trackLpPerMatch(
             puuid,
             matches.map((m) => m.matchId),

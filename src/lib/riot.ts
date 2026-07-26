@@ -218,11 +218,12 @@ export type ScoreboardParticipant = {
 export async function getRecentRankedMatches(
   puuid: string,
   platform: string,
-  count = 5
+  count = 5,
+  start = 0
 ) {
   const region = platformToRegion(platform);
   const matchIds = (await riotFetch(
-    `https://${region}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?queue=420&start=0&count=${count}`
+    `https://${region}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?queue=420&start=${start}&count=${count}`
   )) as string[];
 
   const [matches, championMap, summonerSpellMap] = await Promise.all([
@@ -298,6 +299,7 @@ export async function getRecentRankedMatches(
             summoner2IconUrl: summonerSpellMap[p.summoner2Id]
               ? `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/spell/${summonerSpellMap[p.summoner2Id]}`
               : null,
+            position: p.individualPosition || p.teamPosition || null,
             kills: p.kills,
             deaths: p.deaths,
             assists: p.assists,
