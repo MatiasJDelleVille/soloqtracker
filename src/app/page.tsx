@@ -74,16 +74,21 @@ export default function Home() {
           const list: Player[] = data.players ?? [];
           setPlayers(list);
 
+          // Stagger requests instead of firing them all at once — with several
+          // players tracked, an instant burst can trip the Riot API's per-second
+          // rate limit even though total usage stays well under the 2-minute cap.
           const results = await Promise.all(
-            list.map((p) =>
-              fetch(`/api/stats?puuid=${p.puuid}&region=${p.region}`)
-                .then((res) => res.json())
-                .then((d) => ({
-                  id: p.id,
-                  stats: d.error ? null : (d as Stats),
-                  error: (d.error as string | undefined) ?? null,
-                }))
-                .catch(() => ({ id: p.id, stats: null, error: "No se pudo cargar" }))
+            list.map((p, i) =>
+              new Promise((resolve) => setTimeout(resolve, i * 300)).then(() =>
+                fetch(`/api/stats?puuid=${p.puuid}&region=${p.region}`)
+                  .then((res) => res.json())
+                  .then((d) => ({
+                    id: p.id,
+                    stats: d.error ? null : (d as Stats),
+                    error: (d.error as string | undefined) ?? null,
+                  }))
+                  .catch(() => ({ id: p.id, stats: null, error: "No se pudo cargar" }))
+              )
             )
           );
 

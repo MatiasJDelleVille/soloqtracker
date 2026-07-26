@@ -80,15 +80,17 @@ export default function TftHome() {
           setPlayers(list);
 
           const results = await Promise.all(
-            list.map((p) =>
-              fetch(`/api/tft/stats?puuid=${p.puuid}&region=${p.region}`)
-                .then((res) => res.json())
-                .then((d) => ({
-                  id: p.id,
-                  stats: d.error ? null : (d as TftStats),
-                  error: (d.error as string | undefined) ?? null,
-                }))
-                .catch(() => ({ id: p.id, stats: null, error: "No se pudo cargar" }))
+            list.map((p, i) =>
+              new Promise((resolve) => setTimeout(resolve, i * 300)).then(() =>
+                fetch(`/api/tft/stats?puuid=${p.puuid}&region=${p.region}`)
+                  .then((res) => res.json())
+                  .then((d) => ({
+                    id: p.id,
+                    stats: d.error ? null : (d as TftStats),
+                    error: (d.error as string | undefined) ?? null,
+                  }))
+                  .catch(() => ({ id: p.id, stats: null, error: "No se pudo cargar" }))
+              )
             )
           );
 

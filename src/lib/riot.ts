@@ -1,3 +1,5 @@
+import { getCachedMatches, cacheMatches } from "./kv";
+
 const PLATFORM_TO_REGION: Record<string, string> = {
   na1: "americas",
   br1: "americas",
@@ -226,15 +228,26 @@ export async function getRecentRankedMatches(
     `https://${region}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?queue=420&start=${start}&count=${count}`
   )) as string[];
 
-  const [matches, championMap, summonerSpellMap] = await Promise.all([
-    Promise.all(
-      matchIds.map((id) =>
-        riotFetch(`https://${region}.api.riotgames.com/lol/match/v5/matches/${id}`)
-      )
-    ),
+  const [cachedMatches, championMap, summonerSpellMap] = await Promise.all([
+    getCachedMatches(matchIds),
     getChampionMap(),
     getSummonerSpellMap(),
   ]);
+
+  const missingIds = matchIds.filter((id) => !(id in cachedMatches));
+  const freshlyFetched = await Promise.all(
+    missingIds.map((id) =>
+      riotFetch(`https://${region}.api.riotgames.com/lol/match/v5/matches/${id}`)
+    )
+  );
+  const freshById: Record<string, unknown> = {};
+  missingIds.forEach((id, i) => {
+    freshById[id] = freshlyFetched[i];
+  });
+  await cacheMatches(freshById);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const matches = matchIds.map((id) => (cachedMatches[id] ?? freshById[id]) as any);
   await loadRunesReforged();
 
   return Promise.all(

@@ -47,6 +47,29 @@ export async function removePlayer(key: string, id: string): Promise<void> {
   );
 }
 
+/**
+ * Match data is immutable once the game ends, so raw match-detail responses
+ * are cached forever. This avoids re-hitting the Riot API for matches we've
+ * already fetched on a previous page load or auto-refresh tick.
+ */
+export async function getCachedMatches(
+  matchIds: string[]
+): Promise<Record<string, unknown>> {
+  if (matchIds.length === 0) return {};
+  const values = await Promise.all(matchIds.map((id) => redis.get(`match:${id}`)));
+  const result: Record<string, unknown> = {};
+  matchIds.forEach((id, i) => {
+    if (values[i] != null) result[id] = values[i];
+  });
+  return result;
+}
+
+export async function cacheMatches(matches: Record<string, unknown>): Promise<void> {
+  const entries = Object.entries(matches);
+  if (entries.length === 0) return;
+  await Promise.all(entries.map(([id, data]) => redis.set(`match:${id}`, data)));
+}
+
 type LpPointer = { lastMatchId: string; lastLp: number };
 
 /**
