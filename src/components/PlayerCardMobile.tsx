@@ -3,22 +3,7 @@
 import type { Player } from "@/lib/kv";
 import type { Stats } from "./PlayerRow";
 import LpGapBox, { type LpGap } from "./LpGapBox";
-import MatchScoreboard from "./MatchScoreboard";
-
-function formatDuration(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatMatchDate(timestampMs: number) {
-  return new Date(timestampMs).toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import MatchItem from "./MatchItem";
 
 export default function PlayerCardMobile({
   rank,
@@ -111,23 +96,7 @@ export default function PlayerCardMobile({
             <p className="text-white/40 px-1">Sin partidas recientes</p>
           )}
           {stats.matches.map((m) => (
-            <div key={m.matchId} className="rounded-lg bg-black/20 border border-white/10 p-3">
-              <p className="text-xs text-white/40 mb-2">
-                {m.championName} · {formatDuration(m.durationSeconds)} ·{" "}
-                {formatMatchDate(m.gameEndTimestamp)}
-                {m.lpChange !== null && (
-                  <span
-                    className={`ml-2 font-medium ${
-                      m.lpChange >= 0 ? "text-emerald-400" : "text-red-400"
-                    }`}
-                  >
-                    {m.lpChange >= 0 ? "+" : ""}
-                    {m.lpChange} LP
-                  </span>
-                )}
-              </p>
-              <MatchScoreboard participants={m.participants} trackedPuuid={player.puuid} />
-            </div>
+            <MatchItem key={m.matchId} match={m} trackedPuuid={player.puuid} />
           ))}
         </div>
       )}

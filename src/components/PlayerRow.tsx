@@ -2,7 +2,7 @@
 
 import type { Player } from "@/lib/kv";
 import LpGapBox, { type LpGap } from "./LpGapBox";
-import MatchScoreboard, { type ScoreboardParticipant } from "./MatchScoreboard";
+import MatchItem, { type MatchSummary } from "./MatchItem";
 
 type RankedEntry = {
   tier: string;
@@ -12,40 +12,12 @@ type RankedEntry = {
   losses: number;
 } | null;
 
-type MatchSummary = {
-  matchId: string;
-  win: boolean;
-  championName: string;
-  kills: number;
-  deaths: number;
-  assists: number;
-  durationSeconds: number;
-  gameEndTimestamp: number;
-  participants: ScoreboardParticipant[];
-  lpChange: number | null;
-};
-
 export type Stats = {
   ranked: RankedEntry;
   matches: MatchSummary[];
   profileIconId: number;
   ddragonVersion: string;
 } | null;
-
-function formatDuration(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatMatchDate(timestampMs: number) {
-  return new Date(timestampMs).toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function DpmBadge({ player }: { player: Player }) {
   const dpmUrl = `https://dpm.lol/${encodeURIComponent(player.game_name)}-${encodeURIComponent(
@@ -147,25 +119,9 @@ export default function PlayerRow({
             {stats.matches.length === 0 && (
               <p className="text-white/40">Sin partidas recientes</p>
             )}
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
               {stats.matches.map((m) => (
-                <div key={m.matchId} className="rounded-lg bg-black/20 border border-white/10 p-3">
-                  <p className="text-xs text-white/40 mb-2">
-                    {m.championName} · {formatDuration(m.durationSeconds)} ·{" "}
-                    {formatMatchDate(m.gameEndTimestamp)}
-                    {m.lpChange !== null && (
-                      <span
-                        className={`ml-2 font-medium ${
-                          m.lpChange >= 0 ? "text-emerald-400" : "text-red-400"
-                        }`}
-                      >
-                        {m.lpChange >= 0 ? "+" : ""}
-                        {m.lpChange} LP
-                      </span>
-                    )}
-                  </p>
-                  <MatchScoreboard participants={m.participants} trackedPuuid={player.puuid} />
-                </div>
+                <MatchItem key={m.matchId} match={m} trackedPuuid={player.puuid} />
               ))}
             </div>
           </td>

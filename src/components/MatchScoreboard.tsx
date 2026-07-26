@@ -6,6 +6,8 @@ export type ScoreboardParticipant = {
   puuid: string;
   name: string;
   championIconUrl: string | null;
+  summoner1IconUrl: string | null;
+  summoner2IconUrl: string | null;
   kills: number;
   deaths: number;
   assists: number;

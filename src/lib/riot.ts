@@ -95,6 +95,24 @@ export async function getChampionMap(): Promise<Record<number, string>> {
   return map;
 }
 
+let cachedSummonerSpellMap: Record<number, string> | null = null;
+
+/** Maps summoner spell key (e.g. 4 -> "SummonerFlash") to its Data Dragon icon file name. */
+async function getSummonerSpellMap(): Promise<Record<number, string>> {
+  if (cachedSummonerSpellMap) return cachedSummonerSpellMap;
+  const version = await getLatestDdragonVersion();
+  const res = await fetch(
+    `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/summoner.json`
+  );
+  const data = (await res.json()) as { data: Record<string, { key: string; image: { full: string } }> };
+  const map: Record<number, string> = {};
+  for (const spell of Object.values(data.data)) {
+    map[Number(spell.key)] = spell.image.full;
+  }
+  cachedSummonerSpellMap = map;
+  return map;
+}
+
 export type RuneIcons = {
   keystone: string | null;
   secondaryStyleIcon: string | null;
@@ -207,13 +225,14 @@ export async function getRecentRankedMatches(
     `https://${region}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?queue=420&start=0&count=${count}`
   )) as string[];
 
-  const [matches, championMap] = await Promise.all([
+  const [matches, championMap, summonerSpellMap] = await Promise.all([
     Promise.all(
       matchIds.map((id) =>
         riotFetch(`https://${region}.api.riotgames.com/lol/match/v5/matches/${id}`)
       )
     ),
     getChampionMap(),
+    getSummonerSpellMap(),
   ]);
   await loadRunesReforged();
 
@@ -272,6 +291,12 @@ export async function getRecentRankedMatches(
               : p.summonerName || "—",
             championIconUrl: championMap[p.championId]
               ? `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/champion/${championMap[p.championId]}.png`
+              : null,
+            summoner1IconUrl: summonerSpellMap[p.summoner1Id]
+              ? `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/spell/${summonerSpellMap[p.summoner1Id]}`
+              : null,
+            summoner2IconUrl: summonerSpellMap[p.summoner2Id]
+              ? `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/spell/${summonerSpellMap[p.summoner2Id]}`
               : null,
             kills: p.kills,
             deaths: p.deaths,
