@@ -3,17 +3,15 @@ export type LpGap = {
   toPrevious: number | null;
 };
 
-export default function LpGapBox({ toNext, toPrevious }: LpGap) {
-  if (toNext === null && toPrevious === null) return null;
+export default function LpGapBox({ toNext }: LpGap) {
+  if (toNext === null) return null;
 
   return (
-    <div className="flex flex-col text-xs leading-tight items-end w-16 shrink-0 font-mono">
-      <span className="text-emerald-400" title="LP para alcanzar al siguiente">
-        {toNext !== null ? `▲${toNext}` : "—"}
-      </span>
-      <span className="text-red-400" title="LP de margen sobre el anterior">
-        {toPrevious !== null ? `▼${toPrevious}` : "—"}
-      </span>
-    </div>
+    <span
+      className="text-xs font-mono text-emerald-400 shrink-0"
+      title="LP para alcanzar al de arriba"
+    >
+      ▲{toNext}
+    </span>
   );
 }

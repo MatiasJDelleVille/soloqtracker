@@ -59,9 +59,10 @@ function GeneralRow({
         )}
       </div>
       <span
-        className={`flex-1 min-w-0 truncate ${tracked ? "text-white font-semibold" : "text-white/80"}`}
+        className={`w-24 shrink-0 truncate ${tracked ? "text-white font-semibold" : "text-white/80"}`}
+        title={p.name}
       >
-        {p.name}
+        {p.name.split("#")[0]}
       </span>
       <span className="w-16 text-right text-white/70 shrink-0">
         {p.kills}/<span className="text-red-400">{p.deaths}</span>/{p.assists}
@@ -178,7 +179,7 @@ export default function MatchScoreboard({
               const teamParticipants = participants.filter((p) => p.teamId === teamId);
               const win = teamParticipants[0]?.win;
               return (
-                <div key={teamId} className="w-[26rem] shrink-0">
+                <div key={teamId} className="w-[32rem] shrink-0">
                   <p
                     className={`text-sm font-semibold mb-1 ${
                       win ? "text-emerald-400" : "text-red-400"
