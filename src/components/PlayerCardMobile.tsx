@@ -39,12 +39,22 @@ export default function PlayerCardMobile({
         <span className="text-white/40 font-mono w-5 shrink-0">{rank}</span>
 
         {stats?.profileIconId ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`https://ddragon.leagueoflegends.com/cdn/${stats.ddragonVersion}/img/profileicon/${stats.profileIconId}.png`}
-            alt=""
-            className="w-10 h-10 rounded-full border border-white/10 shrink-0"
-          />
+          <div className="relative w-10 h-10 shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`https://ddragon.leagueoflegends.com/cdn/${stats.ddragonVersion}/img/profileicon/${stats.profileIconId}.png`}
+              alt=""
+              className="w-10 h-10 rounded-full border border-white/10"
+            />
+            {stats.ranked && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblem/emblem-${stats.ranked.tier.toLowerCase()}.png`}
+                alt=""
+                className="absolute -bottom-1.5 -right-1.5 w-4 h-4"
+              />
+            )}
+          </div>
         ) : (
           <div className="w-10 h-10 rounded-full bg-white/10 shrink-0" />
         )}
