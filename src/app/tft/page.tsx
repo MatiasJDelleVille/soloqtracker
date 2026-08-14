@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Player } from "@/lib/kv";
 import TftPlayerRow, { type TftStats } from "@/components/TftPlayerRow";
 import TftPlayerCardMobile from "@/components/TftPlayerCardMobile";
-import { computeLpGaps, eloScore, totalLp } from "@/lib/rank";
+import { computeLpGaps, eloScore } from "@/lib/rank";
 
 type RankedEntry = NonNullable<NonNullable<TftStats>["ranked"]>;
 
@@ -147,7 +147,7 @@ export default function TftHome() {
     const eloSorted = players
       .slice()
       .sort((a, b) => eloScore(statsMap[b.id]?.ranked ?? null) - eloScore(statsMap[a.id]?.ranked ?? null));
-    const gaps = computeLpGaps(eloSorted.map((p) => totalLp(statsMap[p.id]?.ranked ?? null)));
+    const gaps = computeLpGaps(eloSorted.map((p) => statsMap[p.id]?.ranked ?? null));
 
     const map: Record<string, { toNext: number | null; toPrevious: number | null }> = {};
     eloSorted.forEach((p, i) => {

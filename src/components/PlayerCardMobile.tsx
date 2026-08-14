@@ -49,9 +49,9 @@ export default function PlayerCardMobile({
             {stats.ranked && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={`https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-emblem/emblem-${stats.ranked.tier.toLowerCase()}.png`}
+                src={`https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-mini-crests/${stats.ranked.tier.toLowerCase()}.svg`}
                 alt=""
-                className="absolute -bottom-1.5 -right-1.5 w-4 h-4"
+                className="absolute -bottom-1.5 -right-1.5 w-5 h-5"
               />
             )}
           </div>

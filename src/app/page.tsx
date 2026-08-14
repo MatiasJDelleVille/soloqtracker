@@ -5,7 +5,7 @@ import type { Player } from "@/lib/kv";
 import PlayerRow, { type Stats } from "@/components/PlayerRow";
 import type { MatchSummary } from "@/components/MatchItem";
 import PlayerCardMobile from "@/components/PlayerCardMobile";
-import { computeLpGaps, eloScore, totalLp } from "@/lib/rank";
+import { computeLpGaps, eloScore } from "@/lib/rank";
 
 type RankedEntry = NonNullable<NonNullable<Stats>["ranked"]>;
 
@@ -160,7 +160,7 @@ export default function Home() {
     const eloSorted = players
       .slice()
       .sort((a, b) => eloScore(statsMap[b.id]?.ranked ?? null) - eloScore(statsMap[a.id]?.ranked ?? null));
-    const gaps = computeLpGaps(eloSorted.map((p) => totalLp(statsMap[p.id]?.ranked ?? null)));
+    const gaps = computeLpGaps(eloSorted.map((p) => statsMap[p.id]?.ranked ?? null));
 
     const map: Record<string, { toNext: number | null; toPrevious: number | null }> = {};
     eloSorted.forEach((p, i) => {

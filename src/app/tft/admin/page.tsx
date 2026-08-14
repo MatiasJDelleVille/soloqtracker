@@ -3,11 +3,17 @@
 import { useEffect, useState } from "react";
 import type { Player } from "@/lib/kv";
 
-const REGION = "la2";
+const REGIONS = [
+  { value: "la1", label: "LAN (Norte)" },
+  { value: "la2", label: "LAS (Sur)" },
+  { value: "br1", label: "Brasil" },
+  { value: "na1", label: "NA" },
+];
 
 export default function TftAdmin() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [riotId, setRiotId] = useState("");
+  const [region, setRegion] = useState("la2");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -26,7 +32,7 @@ export default function TftAdmin() {
     const res = await fetch("/api/tft/players", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ riotId, region: REGION }),
+      body: JSON.stringify({ riotId, region }),
     });
     const data = await res.json();
     setSubmitting(false);
@@ -63,6 +69,17 @@ export default function TftAdmin() {
             placeholder="NombreInvocador#TAG"
             className="flex-1 rounded-lg bg-white/5 border border-white/10 px-4 py-2 text-white placeholder:text-white/30 outline-none focus:border-white/30"
           />
+          <select
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
+            className="rounded-lg bg-white/5 border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30"
+          >
+            {REGIONS.map((r) => (
+              <option key={r.value} value={r.value} className="bg-[#111827]">
+                {r.label}
+              </option>
+            ))}
+          </select>
           <button
             type="submit"
             disabled={submitting}

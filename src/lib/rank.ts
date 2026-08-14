@@ -45,29 +45,51 @@ export type LpGap = {
   toPrevious: number | null;
 };
 
+const APEX_TIERS = ["MASTER", "GRANDMASTER", "CHALLENGER"];
+
 /**
- * Given a list of players sorted by elo (best first), each with a nullable
- * totalLp, computes for the player at `index` how much LP separates them
- * from their immediate neighbors: `toNext` is LP needed to climb to the
- * better-ranked neighbor above, `toPrevious` is LP of cushion before
- * dropping to the worse-ranked neighbor below.
+ * Master/Grandmaster/Challenger don't have divisions — their LP isn't on the
+ * same "400 units per tier" scale totalLp() assumes for the tiers below, so
+ * a raw totalLp diff across that boundary (e.g. Diamond I vs Master I) wildly
+ * overstates the real gap. Gaps are only meaningful within the same side of
+ * that boundary.
  */
-export function computeLpGaps(sortedTotalLp: (number | null)[]): LpGap[] {
-  return sortedTotalLp.map((lp, i) => {
-    if (lp === null) return { toNext: null, toPrevious: null };
+function comparableAcrossApexBoundary(a: RankedInfo | null, b: RankedInfo | null): boolean {
+  if (!a || !b) return false;
+  return APEX_TIERS.includes(a.tier) === APEX_TIERS.includes(b.tier);
+}
+
+/**
+ * Given a list of players sorted by elo (best first), computes for the
+ * player at `index` how much LP separates them from their immediate
+ * neighbors: `toNext` is LP needed to climb to the better-ranked neighbor
+ * above, `toPrevious` is LP of cushion before dropping to the worse-ranked
+ * neighbor below. Both are null when the neighbor is on the other side of
+ * the apex-tier boundary, where the comparison isn't meaningful.
+ */
+export function computeLpGaps(sortedRanked: (RankedInfo | null)[]): LpGap[] {
+  const sortedTotalLp = sortedRanked.map(totalLp);
+
+  return sortedRanked.map((ranked, i) => {
+    if (ranked === null) return { toNext: null, toPrevious: null };
+    const lp = sortedTotalLp[i]!;
 
     let toNext: number | null = null;
     for (let j = i - 1; j >= 0; j--) {
-      if (sortedTotalLp[j] !== null) {
-        toNext = sortedTotalLp[j]! - lp;
+      if (sortedRanked[j] !== null) {
+        if (comparableAcrossApexBoundary(ranked, sortedRanked[j])) {
+          toNext = sortedTotalLp[j]! - lp;
+        }
         break;
       }
     }
 
     let toPrevious: number | null = null;
-    for (let j = i + 1; j < sortedTotalLp.length; j++) {
-      if (sortedTotalLp[j] !== null) {
-        toPrevious = lp - sortedTotalLp[j]!;
+    for (let j = i + 1; j < sortedRanked.length; j++) {
+      if (sortedRanked[j] !== null) {
+        if (comparableAcrossApexBoundary(ranked, sortedRanked[j])) {
+          toPrevious = lp - sortedTotalLp[j]!;
+        }
         break;
       }
     }
