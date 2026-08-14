@@ -74,22 +74,12 @@ export default function PlayerRow({
         <td className="px-4 py-3">
           <div className="flex items-center gap-3">
             {stats?.profileIconId && (
-              <div className="relative w-9 h-9 shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`https://ddragon.leagueoflegends.com/cdn/${stats.ddragonVersion}/img/profileicon/${stats.profileIconId}.png`}
-                  alt=""
-                  className="w-9 h-9 rounded-full border border-white/10"
-                />
-                {stats.ranked && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/images/ranked-mini-crests/${stats.ranked.tier.toLowerCase()}.svg`}
-                    alt=""
-                    className="absolute -bottom-1.5 -right-1.5 w-5 h-5"
-                  />
-                )}
-              </div>
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`https://ddragon.leagueoflegends.com/cdn/${stats.ddragonVersion}/img/profileicon/${stats.profileIconId}.png`}
+                alt=""
+                className="w-9 h-9 rounded-full border border-white/10 shrink-0"
+              />
             )}
             <div>
               <p className="text-white font-semibold">
