@@ -5,7 +5,7 @@ import {
   getRecentRankedMatches,
   getSummonerProfile,
 } from "@/lib/riot";
-import { trackLpPerMatch } from "@/lib/kv";
+import { getLpPerMatch, trackLpPerMatch } from "@/lib/kv";
 import { totalLp } from "@/lib/rank";
 
 const INITIAL_MATCH_COUNT = 10;
@@ -29,17 +29,15 @@ export async function GET(req: NextRequest) {
       getLatestDdragonVersion(),
     ]);
 
-    // LP deltas are only attributable relative to the newest-match pointer,
-    // so tracking is only meaningful for the first page (start === 0).
+    // New LP deltas are only attributable relative to the newest-match
+    // pointer, so tracking only runs on the first page. Older pages still get
+    // whatever was attributed to those matches back when they were fresh.
     const currentTotalLp = totalLp(ranked);
+    const matchIds = matches.map((m) => m.matchId);
     const lpDeltas =
       start === 0 && currentTotalLp !== null
-        ? await trackLpPerMatch(
-            puuid,
-            matches.map((m) => m.matchId),
-            currentTotalLp
-          )
-        : {};
+        ? await trackLpPerMatch(puuid, matchIds, currentTotalLp)
+        : await getLpPerMatch(puuid, matchIds);
 
     const matchesWithLp = matches.map((m) => ({
       ...m,

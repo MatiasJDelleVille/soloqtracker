@@ -73,6 +73,40 @@ export async function cacheMatches(matches: Record<string, unknown>): Promise<vo
 type LpPointer = { lastMatchId: string; lastLp: number };
 
 /**
+ * Safety cap so one player's LP history can't grow without bound in Redis.
+ * Entries are stored oldest-first, so trimming from the front drops the
+ * matches nobody is going to scroll back to anyway.
+ */
+const LP_HISTORY_LIMIT = 1000;
+
+async function readLpHistory(puuid: string): Promise<Record<string, number>> {
+  const history = await redis.get<Record<string, number>>(`lp-history:${puuid}`);
+  return history ?? {};
+}
+
+function pickDeltas(
+  history: Record<string, number>,
+  matchIds: string[]
+): Record<string, number | null> {
+  const result: Record<string, number | null> = {};
+  for (const id of matchIds) result[id] = history[id] ?? null;
+  return result;
+}
+
+/**
+ * Read-only lookup of previously attributed LP deltas. Used for the older
+ * pages of the match history, where there's nothing new to attribute but the
+ * deltas we computed back when those matches were fresh are still valid.
+ */
+export async function getLpPerMatch(
+  puuid: string,
+  matchIds: string[]
+): Promise<Record<string, number | null>> {
+  if (matchIds.length === 0) return {};
+  return pickDeltas(await readLpHistory(puuid), matchIds);
+}
+
+/**
  * Attributes LP gained/lost to a specific match. Riot's API never exposes
  * per-match LP directly, so this works by remembering the LP value right
  * after the last match we saw. On each call:
@@ -81,8 +115,9 @@ type LpPointer = { lastMatchId: string; lastLp: number };
  *  - If two or more new matches appeared at once (we didn't check often
  *    enough), we can't tell them apart, so those matches are left unknown
  *    rather than showing a misleading combined number.
- * Once a match's delta is computed it's cached, so it stays correct/stable
- * across reloads instead of only reflecting "since the last page load".
+ * Once a match's delta is computed it's stored permanently: the history is
+ * only ever appended to, never rewritten to match the page being shown, so a
+ * match keeps its LP number long after it falls off the first page.
  *
  * `matchIdsNewestFirst` must be the recent ranked match ids, newest first.
  * Returns a map of matchId -> LP delta (null if unknown).
@@ -97,35 +132,38 @@ export async function trackLpPerMatch(
 
   const [pointer, history] = await Promise.all([
     redis.get<LpPointer>(pointerKey),
-    redis.get<Record<string, number>>(historyKey),
+    readLpHistory(puuid),
   ]);
-  const nextHistory: Record<string, number> = { ...(history ?? {}) };
+  const nextHistory: Record<string, number> = { ...history };
+  let changed = false;
 
   if (pointer && matchIdsNewestFirst.length > 0) {
     const idx = matchIdsNewestFirst.indexOf(pointer.lastMatchId);
     if (idx === 1) {
       nextHistory[matchIdsNewestFirst[0]] = currentTotalLp - pointer.lastLp;
+      changed = true;
     }
     // idx === 0: nothing new since last check. idx === -1 or > 1: can't
     // attribute reliably, leave those matches without a known delta.
   }
 
-  // Keep the history capped to the matches we actually display.
-  const prunedHistory: Record<string, number> = {};
-  for (const id of matchIdsNewestFirst) {
-    if (id in nextHistory) prunedHistory[id] = nextHistory[id];
+  const keys = Object.keys(nextHistory);
+  for (const stale of keys.slice(0, Math.max(0, keys.length - LP_HISTORY_LIMIT))) {
+    delete nextHistory[stale];
+    changed = true;
   }
 
-  await Promise.all([
-    matchIdsNewestFirst.length > 0
-      ? redis.set(pointerKey, { lastMatchId: matchIdsNewestFirst[0], lastLp: currentTotalLp })
-      : Promise.resolve(),
-    redis.set(historyKey, prunedHistory),
-  ]);
-
-  const result: Record<string, number | null> = {};
-  for (const id of matchIdsNewestFirst) {
-    result[id] = prunedHistory[id] ?? null;
+  const writes: Promise<unknown>[] = [];
+  if (matchIdsNewestFirst.length > 0) {
+    writes.push(
+      redis.set(pointerKey, {
+        lastMatchId: matchIdsNewestFirst[0],
+        lastLp: currentTotalLp,
+      })
+    );
   }
-  return result;
+  if (changed) writes.push(redis.set(historyKey, nextHistory));
+  await Promise.all(writes);
+
+  return pickDeltas(nextHistory, matchIdsNewestFirst);
 }
