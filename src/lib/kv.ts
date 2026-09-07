@@ -19,6 +19,26 @@ async function getList(key: string): Promise<Player[]> {
   return list ?? [];
 }
 
+/**
+ * Short-lived cache for a stats response, shared across every viewer. Without
+ * this, each open browser tab independently re-hits the Riot API on its own
+ * poll interval, so N friends viewing at once means N x the Riot calls for
+ * the same data — that's what was tripping the per-second rate limit. A
+ * short TTL keeps data close to live while letting concurrent viewers (and
+ * quick client-side polling) share one upstream call.
+ */
+export async function getCachedStats<T>(key: string): Promise<T | null> {
+  return (await redis.get<T>(key)) ?? null;
+}
+
+export async function setCachedStats(
+  key: string,
+  data: unknown,
+  ttlSeconds: number
+): Promise<void> {
+  await redis.set(key, data, { ex: ttlSeconds });
+}
+
 export async function getPlayers(key: string): Promise<Player[]> {
   const list = await getList(key);
   return list.slice().sort((a, b) => a.created_at.localeCompare(b.created_at));

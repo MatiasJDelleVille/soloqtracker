@@ -106,7 +106,9 @@ export default function TftHome() {
         .finally(() => setLoading(false));
 
     loadAll();
-    const interval = setInterval(loadAll, 20 * 60 * 1000);
+    // The stats endpoint now shares a short-lived cache across every
+    // viewer, so polling this often no longer multiplies Riot API calls.
+    const interval = setInterval(loadAll, 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 

@@ -5,11 +5,15 @@ import {
   getRecentRankedMatches,
   getSummonerProfile,
 } from "@/lib/riot";
-import { getLpPerMatch, trackLpPerMatch } from "@/lib/kv";
+import { getCachedStats, getLpPerMatch, setCachedStats, trackLpPerMatch } from "@/lib/kv";
 import { totalLp } from "@/lib/rank";
 
 const INITIAL_MATCH_COUNT = 10;
 const PAGE_MATCH_COUNT = 5;
+
+// Shared across every viewer so concurrent page loads (and the client's own
+// poll interval) don't each hit the Riot API for the same data.
+const STATS_CACHE_TTL_SECONDS = 45;
 
 export async function GET(req: NextRequest) {
   const puuid = req.nextUrl.searchParams.get("puuid");
@@ -20,6 +24,10 @@ export async function GET(req: NextRequest) {
   if (!puuid || !region) {
     return NextResponse.json({ error: "Faltan parámetros" }, { status: 400 });
   }
+
+  const cacheKey = `stats-cache:${puuid}:${region}:${start}`;
+  const cached = await getCachedStats(cacheKey);
+  if (cached) return NextResponse.json(cached);
 
   try {
     const [ranked, matches, summoner, ddragonVersion] = await Promise.all([
@@ -44,12 +52,14 @@ export async function GET(req: NextRequest) {
       lpChange: lpDeltas[m.matchId] ?? null,
     }));
 
-    return NextResponse.json({
+    const responseBody = {
       ranked,
       matches: matchesWithLp,
       profileIconId: summoner.profileIconId,
       ddragonVersion,
-    });
+    };
+    await setCachedStats(cacheKey, responseBody, STATS_CACHE_TTL_SECONDS);
+    return NextResponse.json(responseBody);
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Error desconocido" },
