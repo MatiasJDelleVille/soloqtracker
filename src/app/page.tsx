@@ -47,6 +47,10 @@ export default function Home() {
   const [statsMap, setStatsMap] = useState<Record<string, Stats>>({});
   const [errorMap, setErrorMap] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
+  // Separate from an empty roster: the players list request itself failed
+  // (e.g. Redis is over its request quota). Showing "no players yet" in that
+  // case would be misleading, so it's tracked and hidden separately.
+  const [playersLoadError, setPlayersLoadError] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("elo");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filter, setFilter] = useState("");
@@ -71,6 +75,11 @@ export default function Home() {
       fetch("/api/players")
         .then((res) => res.json())
         .then(async (data) => {
+          if (data.error) {
+            setPlayersLoadError(true);
+            return;
+          }
+          setPlayersLoadError(false);
           const list: Player[] = data.players ?? [];
           setPlayers(list);
 
@@ -228,9 +237,9 @@ export default function Home() {
 
         {loading && <p className="text-white/40">Cargando jugadores...</p>}
 
-        {!loading && players.length === 0 && (
+        {!loading && !playersLoadError && players.length === 0 && (
           <p className="text-white/40">
-            Todavía no hay jugadores cargados. Andá a /admin para agregar.
+            Todavía no hay jugadores cargados.
           </p>
         )}
 

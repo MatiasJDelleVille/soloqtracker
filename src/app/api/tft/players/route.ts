@@ -5,8 +5,15 @@ import { getAccountByRiotIdTft, PLATFORMS } from "@/lib/riot";
 const KEY = "players:tft";
 
 export async function GET() {
-  const players = await getPlayers(KEY);
-  return NextResponse.json({ players });
+  try {
+    const players = await getPlayers(KEY);
+    return NextResponse.json({ players });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Error desconocido" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {
