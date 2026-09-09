@@ -3,8 +3,10 @@ import { getTftRankedEntries, getTftRecentMatches } from "@/lib/riot";
 import { getCachedStats, setCachedStats } from "@/lib/kv";
 
 // Shared across every viewer so concurrent page loads (and the client's own
-// poll interval) don't each hit the Riot API for the same data.
-const STATS_CACHE_TTL_SECONDS = 45;
+// poll interval) don't each hit the Riot API for the same data. Matches the
+// client's polling cadence so a cache-miss recompute happens roughly once
+// per poll cycle instead of piling up extra ones inside the same window.
+const STATS_CACHE_TTL_SECONDS = 20 * 60;
 
 export async function GET(req: NextRequest) {
   const puuid = req.nextUrl.searchParams.get("puuid");

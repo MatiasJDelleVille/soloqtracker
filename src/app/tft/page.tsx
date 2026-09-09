@@ -106,10 +106,33 @@ export default function TftHome() {
         .finally(() => setLoading(false));
 
     loadAll();
-    // The stats endpoint now shares a short-lived cache across every
-    // viewer, so polling this often no longer multiplies Riot API calls.
-    const interval = setInterval(loadAll, 60 * 1000);
-    return () => clearInterval(interval);
+    // Every open tab counts against Redis's monthly command quota (shared
+    // across everyone tracking this group), so the interval has to stay
+    // conservative — this matches the original cadence, now much cheaper
+    // per call after batching the match-detail lookups into one command.
+    const POLL_MS = 20 * 60 * 1000;
+    let lastLoad = Date.now();
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      lastLoad = Date.now();
+      loadAll();
+    }, POLL_MS);
+
+    // A backgrounded tab skips the interval above entirely, so refresh
+    // immediately when the user comes back to it instead of leaving them
+    // looking at data that's been stale since before they tabbed away.
+    const onVisible = () => {
+      if (!document.hidden && Date.now() - lastLoad > POLL_MS) {
+        lastLoad = Date.now();
+        loadAll();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const handleSort = (key: SortKey) => {

@@ -76,7 +76,11 @@ export async function getCachedMatches(
   matchIds: string[]
 ): Promise<Record<string, unknown>> {
   if (matchIds.length === 0) return {};
-  const values = await Promise.all(matchIds.map((id) => redis.get(`match:${id}`)));
+  // A single MGET counts as one command against Upstash's request quota,
+  // versus one GET per match id — with 10+ matches per player on every
+  // cache-miss recompute, across many tracked players, that difference is
+  // what was burning through the monthly command limit.
+  const values = await redis.mget<unknown[]>(...matchIds.map((id) => `match:${id}`));
   const result: Record<string, unknown> = {};
   matchIds.forEach((id, i) => {
     if (values[i] != null) result[id] = values[i];
@@ -87,7 +91,10 @@ export async function getCachedMatches(
 export async function cacheMatches(matches: Record<string, unknown>): Promise<void> {
   const entries = Object.entries(matches);
   if (entries.length === 0) return;
-  await Promise.all(entries.map(([id, data]) => redis.set(`match:${id}`, data)));
+  // Same reasoning as getCachedMatches: one MSET instead of one SET per match.
+  const kv: Record<string, unknown> = {};
+  for (const [id, data] of entries) kv[`match:${id}`] = data;
+  await redis.mset(kv);
 }
 
 type LpPointer = { lastMatchId: string; lastLp: number };
