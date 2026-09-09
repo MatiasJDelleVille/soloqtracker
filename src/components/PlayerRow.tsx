@@ -91,7 +91,7 @@ export default function PlayerRow({
             </div>
           </div>
         </td>
-        <td className="px-4 py-3 text-white/70">
+        <td className="px-4 py-3 text-white/70 whitespace-nowrap">
           {stats?.ranked
             ? `${stats.ranked.tier} ${stats.ranked.rank} (${stats.ranked.leaguePoints} LP)`
             : stats
