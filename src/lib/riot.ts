@@ -1,4 +1,5 @@
-import { getCachedMatches, cacheMatches } from "./kv";
+import { getCachedMatches, cacheMatches, getCachedStats, setCachedStats } from "./kv";
+import type { TftLobbyPlayer, TftMatch } from "./tft";
 
 const PLATFORM_TO_REGION: Record<string, string> = {
   na1: "americas",
@@ -356,12 +357,119 @@ export async function getRecentRankedMatches(
   );
 }
 
+type TftAssetEntry = { name: string; icon: string | null; cost?: number };
+
+type TftAssets = {
+  champions: Record<string, TftAssetEntry>;
+  items: Record<string, TftAssetEntry>;
+  traits: Record<string, TftAssetEntry>;
+  companions: Record<string, string | null>;
+};
+
+const TFT_ASSETS_CACHE_KEY = "tft-assets:v1";
+const TFT_ASSETS_TTL_SECONDS = 12 * 60 * 60;
+
+function cdragonGameAssetUrl(path: string | null | undefined): string | null {
+  if (!path || path === "None") return null;
+  return `https://raw.communitydragon.org/latest/game/${path
+    .toLowerCase()
+    .replace(/\.tex$/, ".png")}`;
+}
+
+function cdragonCompanionIconUrl(loadoutsIcon: string | null | undefined): string | null {
+  if (!loadoutsIcon) return null;
+  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/${loadoutsIcon
+    .replace("/lol-game-data/assets/", "")
+    .toLowerCase()}`;
+}
+
+/** Community Dragon rather than Data Dragon: Data Dragon leaves out summoned
+ * units (Krug, Sentinel...), so they'd render without an icon and count as 0
+ * gold in the board value MetaTFT shows. */
+async function buildTftAssets(): Promise<TftAssets> {
+  const [tftRes, companionsRes] = await Promise.all([
+    fetch("https://raw.communitydragon.org/latest/cdragon/tft/en_us.json", { cache: "no-store" }),
+    fetch(
+      "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/companions.json",
+      { cache: "no-store" }
+    ),
+  ]);
+  const tft = (await tftRes.json()) as {
+    items: Array<{ apiName: string; name: string; icon: string }>;
+    sets: Record<
+      string,
+      {
+        champions: Array<{
+          apiName: string;
+          name: string;
+          cost: number;
+          squareIcon: string;
+          tileIcon: string;
+        }>;
+        traits: Array<{ apiName: string; name: string; icon: string }>;
+      }
+    >;
+  };
+  const companions = (await companionsRes.json()) as Array<{
+    contentId: string;
+    loadoutsIcon: string;
+  }>;
+
+  const assets: TftAssets = { champions: {}, items: {}, traits: {}, companions: {} };
+  for (const item of tft.items) {
+    assets.items[item.apiName] = { name: item.name, icon: cdragonGameAssetUrl(item.icon) };
+  }
+  for (const set of Object.values(tft.sets)) {
+    for (const c of set.champions) {
+      assets.champions[c.apiName] = {
+        name: c.name,
+        cost: c.cost,
+        icon: cdragonGameAssetUrl(c.squareIcon) ?? cdragonGameAssetUrl(c.tileIcon),
+      };
+    }
+    for (const t of set.traits) {
+      assets.traits[t.apiName] = { name: t.name, icon: cdragonGameAssetUrl(t.icon) };
+    }
+  }
+  for (const c of companions) {
+    assets.companions[c.contentId] = cdragonCompanionIconUrl(c.loadoutsIcon);
+  }
+  return assets;
+}
+
+let tftAssetsPromise: Promise<TftAssets> | null = null;
+
+/** The raw Community Dragon dataset is ~24MB, so the trimmed lookup built from
+ * it is shared in Redis instead of being re-downloaded on every cold start. */
+function getTftAssets(): Promise<TftAssets> {
+  if (!tftAssetsPromise) {
+    tftAssetsPromise = (async () => {
+      const cached = await getCachedStats<TftAssets>(TFT_ASSETS_CACHE_KEY);
+      if (cached) return cached;
+      const built = await buildTftAssets();
+      await setCachedStats(TFT_ASSETS_CACHE_KEY, built, TFT_ASSETS_TTL_SECONDS);
+      return built;
+    })().catch((err) => {
+      tftAssetsPromise = null;
+      throw err;
+    });
+  }
+  return tftAssetsPromise;
+}
+
 export async function getAccountByRiotIdTft(
   gameName: string,
   tagLine: string,
   platform: string
 ) {
   return getAccountByRiotId(gameName, tagLine, platform, tftApiKey());
+}
+
+export async function getTftSummonerProfile(puuid: string, platform: string) {
+  return (await riotFetch(
+    `https://${platform}.api.riotgames.com/tft/summoner/v1/summoners/by-puuid/${puuid}`,
+    tftApiKey()
+  )) as { profileIconId: number };
 }
 
 export async function getTftRankedEntries(puuid: string, platform: string) {
@@ -383,37 +491,152 @@ export async function getTftRankedEntries(puuid: string, platform: string) {
   );
 }
 
+type TftRawParticipant = {
+  puuid: string;
+  riotIdGameName?: string;
+  riotIdTagline?: string;
+  companion?: { content_ID?: string };
+  placement: number;
+  level: number;
+  last_round: number;
+  time_eliminated: number;
+  players_eliminated: number;
+  units: Array<{ character_id: string; tier: number; itemNames?: string[] }>;
+  traits: Array<{ name: string; num_units: number; style: number }>;
+};
+
+type TftRawMatch = {
+  metadata: { match_id: string };
+  info: {
+    queue_id: number;
+    game_length: number;
+    game_datetime: number;
+    participants: TftRawParticipant[];
+  };
+};
+
+const TFT_RANKED_QUEUE_ID = 1100;
+const TFT_MATCH_ID_WINDOW = 20;
+// The TFT key's rate limit (100 requests / 2 min) is shared by every tracked
+// player's refresh, so uncached match details are pulled a couple at a time
+// and the rest fill in on later refreshes (they're cached forever once fetched).
+const MAX_UNCACHED_MATCH_FETCHES = 2;
+
+function toLobbyPlayer(p: TftRawParticipant, assets: TftAssets): TftLobbyPlayer {
+  const units = p.units.map((u) => {
+    const champion = assets.champions[u.character_id];
+    return {
+      characterId: u.character_id,
+      name: champion?.name ?? u.character_id,
+      tier: u.tier,
+      cost: champion?.cost ?? 0,
+      icon: champion?.icon ?? null,
+      items: (u.itemNames ?? []).map((name) => ({
+        name,
+        displayName: assets.items[name]?.name ?? name,
+        icon: assets.items[name]?.icon ?? null,
+      })),
+    };
+  });
+
+  return {
+    puuid: p.puuid,
+    gameName: p.riotIdGameName ?? "",
+    tagLine: p.riotIdTagline ?? "",
+    avatar: (p.companion?.content_ID && assets.companions[p.companion.content_ID]) || null,
+    placement: p.placement,
+    level: p.level,
+    lastRound: p.last_round,
+    timeEliminated: p.time_eliminated,
+    playersEliminated: p.players_eliminated,
+    // Same figure MetaTFT shows next to the coin: each unit's shop cost scaled by its star copies.
+    boardValue: units.reduce((sum, u) => sum + u.cost * 3 ** (u.tier - 1), 0),
+    traits: p.traits
+      .filter((t) => t.style > 0)
+      .sort((a, b) => b.style - a.style || b.num_units - a.num_units)
+      .map((t) => ({
+        name: t.name,
+        displayName: assets.traits[t.name]?.name ?? t.name,
+        numUnits: t.num_units,
+        style: t.style,
+        icon: assets.traits[t.name]?.icon ?? null,
+      })),
+    units,
+  };
+}
+
 export async function getTftRecentMatches(
   puuid: string,
-  platform: string,
-  count = 5
-) {
+  platform: string
+): Promise<{
+  matches: Array<Omit<TftMatch, "lpChange">>;
+  sampleSize: number;
+  avgPlacement: number | null;
+  winRate: number | null;
+}> {
   const region = platformToRegion(platform);
   const key = tftApiKey();
   const matchIds = (await riotFetch(
-    `https://${region}.api.riotgames.com/tft/match/v1/matches/by-puuid/${puuid}/ids?count=15`,
+    `https://${region}.api.riotgames.com/tft/match/v1/matches/by-puuid/${puuid}/ids?count=${TFT_MATCH_ID_WINDOW}`,
     key
   )) as string[];
 
-  const matches = await Promise.all(
-    matchIds.map((id) =>
+  const [cachedMatches, assets] = await Promise.all([
+    getCachedMatches(matchIds, "tft-match"),
+    getTftAssets(),
+  ]);
+
+  const toFetch = matchIds
+    .filter((id) => !(id in cachedMatches))
+    .slice(0, MAX_UNCACHED_MATCH_FETCHES);
+  const fetched = await Promise.all(
+    toFetch.map((id) =>
       riotFetch(`https://${region}.api.riotgames.com/tft/match/v1/matches/${id}`, key)
     )
   );
+  const freshById: Record<string, unknown> = {};
+  toFetch.forEach((id, i) => {
+    freshById[id] = fetched[i];
+  });
+  await cacheMatches(freshById, "tft-match");
 
-  return matches
-    .filter((match) => match.info.queue_id === 1100)
-    .slice(0, count)
-    .map((match) => {
-      const participant = match.info.participants.find(
-        (p: { puuid: string }) => p.puuid === puuid
-      );
-      return {
-        matchId: match.metadata.match_id,
-        placement: participant.placement,
-        level: participant.level,
-        gameLengthSeconds: Math.round(match.info.game_length),
-        gameDatetime: match.info.game_datetime,
-      };
+  // Stop at the first match that's still unfetched: per-match LP attribution
+  // assumes the list holds every ranked game in order, with no gaps.
+  const available: TftRawMatch[] = [];
+  for (const id of matchIds) {
+    const match = (cachedMatches[id] ?? freshById[id]) as TftRawMatch | undefined;
+    if (!match) break;
+    available.push(match);
+  }
+
+  const matches = available
+    .filter((m) => m.info.queue_id === TFT_RANKED_QUEUE_ID)
+    .flatMap((m) => {
+      const participants = m.info.participants
+        .map((p) => toLobbyPlayer(p, assets))
+        .sort((a, b) => a.placement - b.placement);
+      const tracked = participants.find((p) => p.puuid === puuid);
+      if (!tracked) return [];
+      return [
+        {
+          matchId: m.metadata.match_id,
+          placement: tracked.placement,
+          level: tracked.level,
+          lastRound: tracked.lastRound,
+          gameLengthSeconds: Math.round(m.info.game_length),
+          gameDatetime: m.info.game_datetime,
+          participants,
+        },
+      ];
     });
+
+  const placements = matches.map((m) => m.placement);
+  return {
+    matches,
+    sampleSize: placements.length,
+    avgPlacement:
+      placements.length > 0 ? placements.reduce((a, b) => a + b, 0) / placements.length : null,
+    winRate:
+      placements.length > 0 ? placements.filter((p) => p === 1).length / placements.length : null,
+  };
 }

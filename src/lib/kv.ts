@@ -73,14 +73,15 @@ export async function removePlayer(key: string, id: string): Promise<void> {
  * already fetched on a previous page load or auto-refresh tick.
  */
 export async function getCachedMatches(
-  matchIds: string[]
+  matchIds: string[],
+  prefix = "match"
 ): Promise<Record<string, unknown>> {
   if (matchIds.length === 0) return {};
   // A single MGET counts as one command against Upstash's request quota,
   // versus one GET per match id — with 10+ matches per player on every
   // cache-miss recompute, across many tracked players, that difference is
   // what was burning through the monthly command limit.
-  const values = await redis.mget<unknown[]>(...matchIds.map((id) => `match:${id}`));
+  const values = await redis.mget<unknown[]>(...matchIds.map((id) => `${prefix}:${id}`));
   const result: Record<string, unknown> = {};
   matchIds.forEach((id, i) => {
     if (values[i] != null) result[id] = values[i];
@@ -88,12 +89,15 @@ export async function getCachedMatches(
   return result;
 }
 
-export async function cacheMatches(matches: Record<string, unknown>): Promise<void> {
+export async function cacheMatches(
+  matches: Record<string, unknown>,
+  prefix = "match"
+): Promise<void> {
   const entries = Object.entries(matches);
   if (entries.length === 0) return;
   // Same reasoning as getCachedMatches: one MSET instead of one SET per match.
   const kv: Record<string, unknown> = {};
-  for (const [id, data] of entries) kv[`match:${id}`] = data;
+  for (const [id, data] of entries) kv[`${prefix}:${id}`] = data;
   await redis.mset(kv);
 }
 
@@ -106,8 +110,11 @@ type LpPointer = { lastMatchId: string; lastLp: number };
  */
 const LP_HISTORY_LIMIT = 1000;
 
-async function readLpHistory(puuid: string): Promise<Record<string, number>> {
-  const history = await redis.get<Record<string, number>>(`lp-history:${puuid}`);
+async function readLpHistory(
+  puuid: string,
+  prefix: string
+): Promise<Record<string, number>> {
+  const history = await redis.get<Record<string, number>>(`lp-history:${prefix}${puuid}`);
   return history ?? {};
 }
 
@@ -127,10 +134,12 @@ function pickDeltas(
  */
 export async function getLpPerMatch(
   puuid: string,
-  matchIds: string[]
+  matchIds: string[],
+  game: "lol" | "tft" = "lol"
 ): Promise<Record<string, number | null>> {
   if (matchIds.length === 0) return {};
-  return pickDeltas(await readLpHistory(puuid), matchIds);
+  const prefix = game === "tft" ? "tft:" : "";
+  return pickDeltas(await readLpHistory(puuid, prefix), matchIds);
 }
 
 /**
@@ -152,14 +161,16 @@ export async function getLpPerMatch(
 export async function trackLpPerMatch(
   puuid: string,
   matchIdsNewestFirst: string[],
-  currentTotalLp: number
+  currentTotalLp: number,
+  game: "lol" | "tft" = "lol"
 ): Promise<Record<string, number | null>> {
-  const pointerKey = `lp-pointer:${puuid}`;
-  const historyKey = `lp-history:${puuid}`;
+  const prefix = game === "tft" ? "tft:" : "";
+  const pointerKey = `lp-pointer:${prefix}${puuid}`;
+  const historyKey = `lp-history:${prefix}${puuid}`;
 
   const [pointer, history] = await Promise.all([
     redis.get<LpPointer>(pointerKey),
-    readLpHistory(puuid),
+    readLpHistory(puuid, prefix),
   ]);
   const nextHistory: Record<string, number> = { ...history };
   let changed = false;

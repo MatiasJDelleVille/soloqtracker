@@ -1,19 +1,9 @@
 "use client";
 
 import type { Player } from "@/lib/kv";
-import type { TftStats } from "./TftPlayerRow";
+import { formatPercent, metaTftProfileUrl, type TftStats } from "@/lib/tft";
 import LpGapBox, { type LpGap } from "./LpGapBox";
-
-function formatDuration(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function placementColor(placement: number) {
-  if (placement <= 4) return "text-emerald-400";
-  return "text-red-400";
-}
+import TftMatchList from "./TftMatchList";
 
 export default function TftPlayerCardMobile({
   rank,
@@ -34,23 +24,26 @@ export default function TftPlayerCardMobile({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const total = stats?.ranked ? stats.ranked.wins + stats.ranked.losses : 0;
-  const winrate = total > 0 ? Math.round((stats!.ranked!.wins / total) * 100) : null;
-  const avgPlacement =
-    stats?.matches && stats.matches.length > 0
-      ? (
-          stats.matches.reduce((acc, m) => acc + m.placement, 0) / stats.matches.length
-        ).toFixed(1)
-      : null;
-
-  const dpmUrl = `https://dpm.lol/${encodeURIComponent(player.game_name)}-${encodeURIComponent(
-    player.tag_line
-  )}?queue=ranked`;
+  const ranked = stats?.ranked ?? null;
+  const summary = stats?.summary;
+  const hasSummary =
+    summary && (summary.top4Rate !== null || summary.winRate !== null || summary.avgPlacement !== null);
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
       <div onClick={onToggle} className="flex items-center gap-3 p-4 cursor-pointer">
         <span className="text-white/40 font-mono w-5 shrink-0">{rank}</span>
+
+        {stats?.profileIconId ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`https://ddragon.leagueoflegends.com/cdn/${stats.ddragonVersion}/img/profileicon/${stats.profileIconId}.png`}
+            alt=""
+            className="w-10 h-10 rounded-full border border-white/10 shrink-0"
+          />
+        ) : (
+          <div className="w-10 h-10 rounded-full bg-white/10 shrink-0" />
+        )}
 
         <div className="flex-1 min-w-0">
           <p className="text-white font-semibold truncate">
@@ -59,9 +52,9 @@ export default function TftPlayerCardMobile({
           </p>
           {loading && <p className="text-sm text-white/40">Cargando...</p>}
           {error && <p className="text-sm text-red-400">{error}</p>}
-          {stats?.ranked ? (
+          {ranked ? (
             <p className="text-sm text-white/60">
-              {stats.ranked.tier} {stats.ranked.rank} ({stats.ranked.leaguePoints} LP)
+              {ranked.tier} {ranked.rank} ({ranked.leaguePoints} LP)
             </p>
           ) : (
             stats && <p className="text-sm text-white/40">Sin ranked</p>
@@ -71,63 +64,42 @@ export default function TftPlayerCardMobile({
         <LpGapBox {...lpGap} />
 
         <a
-          href={dpmUrl}
+          href={metaTftProfileUrl(player)}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          title="Ver en DPM.lol"
+          title="Ver en MetaTFT"
           className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition shrink-0 p-1.5"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="https://dpm.lol/logo.png"
-            alt="DPM.lol"
-            className="w-full h-full object-contain"
-          />
+          <img src="/metatft.png" alt="MetaTFT" className="w-full h-full object-contain" />
         </a>
       </div>
 
-      {(stats?.ranked || avgPlacement) && (
-        <div className="flex items-center gap-4 px-4 pb-4 -mt-1 flex-wrap">
-          {stats?.ranked && (
-            <>
-              <span className="text-white font-bold text-lg">{winrate}%</span>
-              <span className="text-emerald-400">W: {stats.ranked.wins}</span>
-              <span className="text-red-400">L: {stats.ranked.losses}</span>
-            </>
+      {hasSummary && (
+        <div className="flex items-center gap-4 px-4 pb-4 -mt-1 flex-wrap text-sm text-white/60">
+          {summary.avgPlacement !== null && (
+            <span>
+              AVG Placement{" "}
+              <span className="text-white font-bold">{summary.avgPlacement.toFixed(2)}</span>
+            </span>
           )}
-          {avgPlacement && (
-            <span className="text-white/60">Prom: {avgPlacement}</span>
+          {summary.top4Rate !== null && (
+            <span>
+              Top 4 <span className="text-white font-bold">{formatPercent(summary.top4Rate)}</span>
+            </span>
+          )}
+          {summary.winRate !== null && (
+            <span>
+              Win <span className="text-white font-bold">{formatPercent(summary.winRate)}</span>
+            </span>
           )}
         </div>
       )}
 
-      {expanded && stats?.matches && (
-        <div className="border-t border-white/10 p-3 flex flex-col gap-2">
-          {stats.matches.length === 0 && (
-            <p className="text-white/40 px-1">Sin partidas recientes</p>
-          )}
-          {stats.matches.map((m) => (
-            <div
-              key={m.matchId}
-              className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2"
-            >
-              <div className="flex items-center gap-3">
-                <span className={`font-bold text-lg w-8 ${placementColor(m.placement)}`}>
-                  #{m.placement}
-                </span>
-                <div>
-                  <p className="text-white font-medium">Nivel {m.level}</p>
-                  <p className="text-sm text-white/40">
-                    {formatDuration(m.gameLengthSeconds)}
-                  </p>
-                </div>
-              </div>
-              <p className={`text-sm font-medium ${placementColor(m.placement)}`}>
-                {m.placement <= 4 ? "Top 4" : "Bottom 4"}
-              </p>
-            </div>
-          ))}
+      {expanded && stats && (
+        <div className="border-t border-white/10 p-2 bg-[#17181c] overflow-x-auto">
+          <TftMatchList matches={stats.matches} trackedPuuid={player.puuid} />
         </div>
       )}
     </div>

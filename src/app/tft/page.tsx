@@ -6,21 +6,18 @@ import TftPlayerRow, { type TftStats } from "@/components/TftPlayerRow";
 import TftPlayerCardMobile from "@/components/TftPlayerCardMobile";
 import { computeLpGaps, eloScore } from "@/lib/rank";
 
-type RankedEntry = NonNullable<NonNullable<TftStats>["ranked"]>;
+type SortKey = "elo" | "top4" | "win" | "avgPlacement";
 
-function winrateScore(ranked: RankedEntry | null) {
-  if (!ranked) return -1;
-  const total = ranked.wins + ranked.losses;
-  return total > 0 ? ranked.wins / total : -1;
+const SORT_KEYS: SortKey[] = ["elo", "top4", "win", "avgPlacement"];
+
+function sortScore(key: SortKey, stats: TftStats): number {
+  if (key === "elo") return eloScore(stats?.ranked ?? null);
+  const summary = stats?.summary;
+  if (key === "top4") return summary?.top4Rate ?? -1;
+  if (key === "win") return summary?.winRate ?? -1;
+  // Lower average placement is better, so it's negated to sort like the other "higher is better" scores.
+  return summary?.avgPlacement != null ? -summary.avgPlacement : -100;
 }
-
-function avgPlacement(stats: TftStats) {
-  if (!stats?.matches || stats.matches.length === 0) return null;
-  const sum = stats.matches.reduce((acc, m) => acc + m.placement, 0);
-  return sum / stats.matches.length;
-}
-
-type SortKey = "winrate" | "elo" | "avgPlacement";
 type SortDir = "asc" | "desc";
 
 function SortHeader({
@@ -66,7 +63,7 @@ export default function TftHome() {
     if (!saved) return;
     try {
       const parsed = JSON.parse(saved) as { key?: SortKey; dir?: SortDir };
-      if (parsed.key) setSortKey(parsed.key);
+      if (parsed.key && SORT_KEYS.includes(parsed.key)) setSortKey(parsed.key);
       if (parsed.dir) setSortDir(parsed.dir);
     } catch {}
   }, []);
@@ -161,19 +158,10 @@ export default function TftHome() {
     const dirFactor = sortDir === "desc" ? -1 : 1;
 
     return filtered.slice().sort((a, b) => {
-      const rankedA = statsMap[a.id]?.ranked ?? null;
-      const rankedB = statsMap[b.id]?.ranked ?? null;
-
-      if (sortKey === "winrate")
-        return dirFactor * (winrateScore(rankedA) - winrateScore(rankedB));
-      if (sortKey === "elo") return dirFactor * (eloScore(rankedA) - eloScore(rankedB));
-
-      const avgA = avgPlacement(statsMap[a.id] ?? null);
-      const avgB = avgPlacement(statsMap[b.id] ?? null);
-      // Lower average placement is better, so invert vs. the usual "higher is better" scoring.
-      const scoreA = avgA === null ? -100 : -avgA;
-      const scoreB = avgB === null ? -100 : -avgB;
-      return dirFactor * (scoreA - scoreB);
+      return (
+        dirFactor *
+        (sortScore(sortKey, statsMap[a.id] ?? null) - sortScore(sortKey, statsMap[b.id] ?? null))
+      );
     });
   }, [players, statsMap, sortKey, sortDir, filter]);
 
@@ -192,7 +180,7 @@ export default function TftHome() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-[#0a0e1a] to-[#111827] px-4 py-12">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-1">
           <h1 className="text-3xl font-bold text-white">TFT Tracker</h1>
           <a href="/" className="text-sm text-white/40 hover:text-white transition">
@@ -213,14 +201,17 @@ export default function TftHome() {
             onChange={(e) => setSortKey(e.target.value as SortKey)}
             className="md:hidden rounded-lg bg-white/5 border border-white/10 px-4 py-2 text-white outline-none focus:border-white/30"
           >
-            <option value="winrate" className="bg-[#111827]">
-              Ordenar por winrate
-            </option>
             <option value="elo" className="bg-[#111827]">
               Ordenar por elo
             </option>
             <option value="avgPlacement" className="bg-[#111827]">
-              Ordenar por posición prom.
+              Ordenar por AVG Placement
+            </option>
+            <option value="top4" className="bg-[#111827]">
+              Ordenar por Top 4
+            </option>
+            <option value="win" className="bg-[#111827]">
+              Ordenar por Win
             </option>
           </select>
         </div>
@@ -256,22 +247,28 @@ export default function TftHome() {
                       onClick={() => handleSort("elo")}
                     />
                     <SortHeader
-                      label="Winrate"
-                      active={sortKey === "winrate"}
-                      dir={sortDir}
-                      onClick={() => handleSort("winrate")}
-                    />
-                    <SortHeader
-                      label="Pos. prom."
+                      label="AVG Placement"
                       active={sortKey === "avgPlacement"}
                       dir={sortDir}
                       onClick={() => handleSort("avgPlacement")}
                     />
+                    <SortHeader
+                      label="Top 4"
+                      active={sortKey === "top4"}
+                      dir={sortDir}
+                      onClick={() => handleSort("top4")}
+                    />
+                    <SortHeader
+                      label="Win"
+                      active={sortKey === "win"}
+                      dir={sortDir}
+                      onClick={() => handleSort("win")}
+                    />
                     <th className="px-4 py-3 text-left text-white/60 font-medium">
                       LP hasta
                     </th>
-                    <th className="px-4 py-3 text-left text-white/60 font-medium">
-                      DPM
+                    <th className="px-4 py-3 text-center text-white/60 font-medium">
+                      MetaTFT
                     </th>
                   </tr>
                 </thead>
