@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   // Bumped whenever the response shape grows, so stale bodies cached under the
   // previous key (e.g. without profile icons) aren't served until they expire.
-  const cacheKey = `tft-stats-cache:v3:${puuid}:${region}`;
+  const cacheKey = `tft-stats-cache:v4:${puuid}:${region}`;
   const cached = await getCachedStats(cacheKey);
   if (cached) return NextResponse.json(cached);
 

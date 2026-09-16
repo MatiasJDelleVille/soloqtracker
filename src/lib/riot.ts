@@ -364,9 +364,13 @@ type TftAssets = {
   items: Record<string, TftAssetEntry>;
   traits: Record<string, TftAssetEntry>;
   companions: Record<string, string | null>;
+  // Highest set number Community Dragon knows about, used to filter out
+  // matches from a previous set (Riot's match history keeps last season's
+  // ranked games around after a new set launches).
+  currentSet: number;
 };
 
-const TFT_ASSETS_CACHE_KEY = "tft-assets:v1";
+const TFT_ASSETS_CACHE_KEY = "tft-assets:v2";
 const TFT_ASSETS_TTL_SECONDS = 12 * 60 * 60;
 
 function cdragonGameAssetUrl(path: string | null | undefined): string | null {
@@ -415,7 +419,14 @@ async function buildTftAssets(): Promise<TftAssets> {
     loadoutsIcon: string;
   }>;
 
-  const assets: TftAssets = { champions: {}, items: {}, traits: {}, companions: {} };
+  const currentSet = Math.max(...Object.keys(tft.sets).map(Number));
+  const assets: TftAssets = {
+    champions: {},
+    items: {},
+    traits: {},
+    companions: {},
+    currentSet,
+  };
   for (const item of tft.items) {
     assets.items[item.apiName] = { name: item.name, icon: cdragonGameAssetUrl(item.icon) };
   }
@@ -509,6 +520,7 @@ type TftRawMatch = {
   metadata: { match_id: string };
   info: {
     queue_id: number;
+    tft_set_number: number;
     game_length: number;
     game_datetime: number;
     participants: TftRawParticipant[];
@@ -610,7 +622,9 @@ export async function getTftRecentMatches(
   }
 
   const matches = available
-    .filter((m) => m.info.queue_id === TFT_RANKED_QUEUE_ID)
+    .filter(
+      (m) => m.info.queue_id === TFT_RANKED_QUEUE_ID && m.info.tft_set_number === assets.currentSet
+    )
     .flatMap((m) => {
       const participants = m.info.participants
         .map((p) => toLobbyPlayer(p, assets))
