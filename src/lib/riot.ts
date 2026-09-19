@@ -528,11 +528,12 @@ type TftRawMatch = {
 };
 
 const TFT_RANKED_QUEUE_ID = 1100;
-const TFT_MATCH_ID_WINDOW = 20;
+// Riot's max page size; comfortably covers a whole set's worth of ranked games.
+const TFT_MATCH_ID_WINDOW = 200;
 // The TFT key's rate limit (100 requests / 2 min) is shared by every tracked
 // player's refresh, so uncached match details are pulled a couple at a time
 // and the rest fill in on later refreshes (they're cached forever once fetched).
-const MAX_UNCACHED_MATCH_FETCHES = 6;
+const MAX_UNCACHED_MATCH_FETCHES = 8;
 
 function toLobbyPlayer(p: TftRawParticipant, assets: TftAssets): TftLobbyPlayer {
   const units = p.units.map((u) => {
@@ -577,85 +578,113 @@ function toLobbyPlayer(p: TftRawParticipant, assets: TftAssets): TftLobbyPlayer 
   };
 }
 
-export async function getTftRecentMatches(
+// Compact per-match record kept alongside the full match blob: just enough to
+// compute stats over every ranked game without loading the (large) lobby
+// details of each one. Set/queue are filtered at read time.
+type TftMatchMeta = { q: number; s: number; pl: Record<string, number> };
+
+function toMatchMeta(m: TftRawMatch): TftMatchMeta {
+  const pl: Record<string, number> = {};
+  for (const p of m.info.participants) pl[p.puuid] = p.placement;
+  return { q: m.info.queue_id, s: m.info.tft_set_number, pl };
+}
+
+export type TftRankedIndex = {
+  // Current-set ranked match ids, newest first.
+  rankedIds: string[];
+  placements: number[];
+  // True while some recent matches haven't been indexed yet (cache warming up).
+  incomplete: boolean;
+};
+
+export async function getTftRankedIndex(
   puuid: string,
   platform: string
-): Promise<{
-  matches: Array<Omit<TftMatch, "lpChange">>;
-  sampleSize: number;
-  avgPlacement: number | null;
-  winRate: number | null;
-  // True while some recent matches are still waiting to be fetched, so the
-  // sample is smaller than it will be once the match cache warms up.
-  incomplete: boolean;
-}> {
+): Promise<TftRankedIndex> {
   const region = platformToRegion(platform);
   const key = tftApiKey();
-  const matchIds = (await riotFetch(
+  const ids = (await riotFetch(
     `https://${region}.api.riotgames.com/tft/match/v1/matches/by-puuid/${puuid}/ids?count=${TFT_MATCH_ID_WINDOW}`,
     key
   )) as string[];
 
-  const [cachedMatches, assets] = await Promise.all([
-    getCachedMatches(matchIds, "tft-match"),
+  const [metas, assets] = await Promise.all([
+    getCachedMatches(ids, "tft-meta") as Promise<Record<string, TftMatchMeta>>,
     getTftAssets(),
   ]);
 
-  const toFetch = matchIds
-    .filter((id) => !(id in cachedMatches))
-    .slice(0, MAX_UNCACHED_MATCH_FETCHES);
+  const newMetas: Record<string, TftMatchMeta> = {};
+
+  // Matches cached before the index existed: derive their meta from the full
+  // blob instead of re-fetching from Riot.
+  const unindexed = ids.filter((id) => !(id in metas));
+  for (let i = 0; i < unindexed.length; i += 20) {
+    const chunk = unindexed.slice(i, i + 20);
+    const full = await getCachedMatches(chunk, "tft-match");
+    for (const [id, raw] of Object.entries(full)) {
+      newMetas[id] = toMatchMeta(raw as TftRawMatch);
+    }
+  }
+
+  const toFetch = unindexed.filter((id) => !(id in newMetas)).slice(0, MAX_UNCACHED_MATCH_FETCHES);
   const fetched = await Promise.all(
     toFetch.map((id) =>
       riotFetch(`https://${region}.api.riotgames.com/tft/match/v1/matches/${id}`, key)
     )
   );
-  const freshById: Record<string, unknown> = {};
+  const freshFull: Record<string, unknown> = {};
   toFetch.forEach((id, i) => {
-    freshById[id] = fetched[i];
+    freshFull[id] = fetched[i];
+    newMetas[id] = toMatchMeta(fetched[i] as TftRawMatch);
   });
-  await cacheMatches(freshById, "tft-match");
+  await Promise.all([cacheMatches(freshFull, "tft-match"), cacheMatches(newMetas, "tft-meta")]);
 
-  // Stop at the first match that's still unfetched: per-match LP attribution
+  // Stop at the first match that's still unindexed: per-match LP attribution
   // assumes the list holds every ranked game in order, with no gaps.
-  const available: TftRawMatch[] = [];
-  const incomplete = matchIds.some((id) => !(id in cachedMatches) && !(id in freshById));
-  for (const id of matchIds) {
-    const match = (cachedMatches[id] ?? freshById[id]) as TftRawMatch | undefined;
-    if (!match) break;
-    available.push(match);
+  const rankedIds: string[] = [];
+  const placements: number[] = [];
+  let incomplete = false;
+  for (const id of ids) {
+    const meta = metas[id] ?? newMetas[id];
+    if (!meta) {
+      incomplete = true;
+      break;
+    }
+    const placement = meta.pl[puuid];
+    if (meta.q === TFT_RANKED_QUEUE_ID && meta.s === assets.currentSet && placement != null) {
+      rankedIds.push(id);
+      placements.push(placement);
+    }
   }
+  return { rankedIds, placements, incomplete };
+}
 
-  const matches = available
-    .filter(
-      (m) => m.info.queue_id === TFT_RANKED_QUEUE_ID && m.info.tft_set_number === assets.currentSet
-    )
-    .flatMap((m) => {
-      const participants = m.info.participants
-        .map((p) => toLobbyPlayer(p, assets))
-        .sort((a, b) => a.placement - b.placement);
-      const tracked = participants.find((p) => p.puuid === puuid);
-      if (!tracked) return [];
-      return [
-        {
-          matchId: m.metadata.match_id,
-          placement: tracked.placement,
-          level: tracked.level,
-          lastRound: tracked.lastRound,
-          gameLengthSeconds: Math.round(m.info.game_length),
-          gameDatetime: m.info.game_datetime,
-          participants,
-        },
-      ];
-    });
-
-  const placements = matches.map((m) => m.placement);
-  return {
-    matches,
-    incomplete,
-    sampleSize: placements.length,
-    avgPlacement:
-      placements.length > 0 ? placements.reduce((a, b) => a + b, 0) / placements.length : null,
-    winRate:
-      placements.length > 0 ? placements.filter((p) => p === 1).length / placements.length : null,
-  };
+export async function getTftMatchDetails(
+  puuid: string,
+  matchIds: string[]
+): Promise<Array<Omit<TftMatch, "lpChange">>> {
+  const [cached, assets] = await Promise.all([
+    getCachedMatches(matchIds, "tft-match"),
+    getTftAssets(),
+  ]);
+  return matchIds.flatMap((id) => {
+    const m = cached[id] as TftRawMatch | undefined;
+    if (!m) return [];
+    const participants = m.info.participants
+      .map((p) => toLobbyPlayer(p, assets))
+      .sort((a, b) => a.placement - b.placement);
+    const tracked = participants.find((p) => p.puuid === puuid);
+    if (!tracked) return [];
+    return [
+      {
+        matchId: m.metadata.match_id,
+        placement: tracked.placement,
+        level: tracked.level,
+        lastRound: tracked.lastRound,
+        gameLengthSeconds: Math.round(m.info.game_length),
+        gameDatetime: m.info.game_datetime,
+        participants,
+      },
+    ];
+  });
 }

@@ -68,6 +68,9 @@ export type TftStats = {
   matches: TftMatch[];
   profileIconId: number;
   ddragonVersion: string;
+  // Some recent matches aren't indexed yet, so the summary is still partial.
+  incomplete: boolean;
+  hasMore: boolean;
 } | null;
 
 const PLATFORM_TO_METATFT: Record<string, string> = {

@@ -32,6 +32,7 @@ export default function TftPlayerRow({
   lpGap,
   expanded,
   onToggle,
+  onLoadMoreMatches,
 }: {
   rank: number;
   player: Player;
@@ -41,6 +42,7 @@ export default function TftPlayerRow({
   lpGap: LpGap;
   expanded: boolean;
   onToggle: () => void;
+  onLoadMoreMatches: () => Promise<number>;
 }) {
   const ranked = stats?.ranked ?? null;
   const summary = stats?.summary;
@@ -114,7 +116,12 @@ export default function TftPlayerRow({
         <tr className="border-b border-white/10">
           <td colSpan={8} className="p-3 bg-[#17181c]">
             <div className="overflow-x-auto">
-              <TftMatchList matches={stats.matches} trackedPuuid={player.puuid} />
+              <TftMatchList
+                matches={stats.matches}
+                trackedPuuid={player.puuid}
+                hasMore={stats.hasMore}
+                onLoadMore={onLoadMoreMatches}
+              />
             </div>
           </td>
         </tr>

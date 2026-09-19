@@ -14,6 +14,7 @@ export default function TftPlayerCardMobile({
   lpGap,
   expanded,
   onToggle,
+  onLoadMoreMatches,
 }: {
   rank: number;
   player: Player;
@@ -23,6 +24,7 @@ export default function TftPlayerCardMobile({
   lpGap: LpGap;
   expanded: boolean;
   onToggle: () => void;
+  onLoadMoreMatches: () => Promise<number>;
 }) {
   const ranked = stats?.ranked ?? null;
   const summary = stats?.summary;
@@ -99,7 +101,12 @@ export default function TftPlayerCardMobile({
 
       {expanded && stats && (
         <div className="border-t border-white/10 p-2 bg-[#17181c] overflow-x-auto">
-          <TftMatchList matches={stats.matches} trackedPuuid={player.puuid} />
+          <TftMatchList
+                matches={stats.matches}
+                trackedPuuid={player.puuid}
+                hasMore={stats.hasMore}
+                onLoadMore={onLoadMoreMatches}
+              />
         </div>
       )}
     </div>

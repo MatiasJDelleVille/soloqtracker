@@ -303,18 +303,45 @@ function MatchCard({ match, trackedPuuid }: { match: TftMatch; trackedPuuid: str
 export default function TftMatchList({
   matches,
   trackedPuuid,
+  hasMore,
+  onLoadMore,
 }: {
   matches: TftMatch[];
   trackedPuuid: string;
+  hasMore: boolean;
+  onLoadMore: () => Promise<number>;
 }) {
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
+
   if (matches.length === 0) {
     return <p className="text-white/40 px-1">Sin partidas ranked recientes</p>;
   }
+
+  const handleLoadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const added = await onLoadMore();
+      if (added === 0) setExhausted(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3 min-w-[960px]">
       {matches.map((m) => (
         <MatchCard key={m.matchId} match={m} trackedPuuid={trackedPuuid} />
       ))}
+      {hasMore && !exhausted && (
+        <button
+          onClick={handleLoadMore}
+          disabled={loadingMore}
+          className="self-center text-sm text-white/50 hover:text-white transition px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-50"
+        >
+          {loadingMore ? "Cargando..." : "Cargar más"}
+        </button>
+      )}
     </div>
   );
 }

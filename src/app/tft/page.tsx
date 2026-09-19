@@ -141,6 +141,67 @@ export default function TftHome() {
     };
   }, []);
 
+  // While a player's match index is still warming up (Riot rate limits cap how
+  // many matches get indexed per request) their summary is partial, so re-ask
+  // just those players shortly after until it's complete.
+  const hasPartial = Object.values(statsMap).some((s) => s?.incomplete);
+  useEffect(() => {
+    if (!hasPartial) return;
+    const timer = setTimeout(() => {
+      if (document.hidden) return;
+      players.forEach((p, i) => {
+        if (!statsMap[p.id]?.incomplete) return;
+        setTimeout(() => {
+          fetch(`/api/tft/stats?puuid=${p.puuid}&region=${p.region}`)
+            .then((res) => res.json())
+            .then((d) => {
+              if (d.error) return;
+              const fresh = d as NonNullable<TftStats>;
+              setStatsMap((prev) => {
+                const prevStats = prev[p.id];
+                // Keep any extra history pages the viewer already loaded.
+                const keepMatches = prevStats && prevStats.matches.length > fresh.matches.length;
+                return {
+                  ...prev,
+                  [p.id]: keepMatches
+                    ? { ...fresh, matches: prevStats.matches, hasMore: prevStats.hasMore }
+                    : fresh,
+                };
+              });
+            })
+            .catch(() => {});
+        }, i * 600);
+      });
+    }, 65 * 1000);
+    return () => clearTimeout(timer);
+  }, [hasPartial, statsMap, players]);
+
+  const loadMoreMatches = async (player: Player): Promise<number> => {
+    const current = statsMap[player.id];
+    if (!current) return 0;
+
+    const res = await fetch(
+      `/api/tft/stats?puuid=${player.puuid}&region=${player.region}&start=${current.matches.length}`
+    );
+    const data = await res.json();
+    if (data.error) return 0;
+
+    const newMatches = (data.matches ?? []) as NonNullable<TftStats>["matches"];
+    setStatsMap((prev) => {
+      const prevStats = prev[player.id];
+      if (!prevStats) return prev;
+      return {
+        ...prev,
+        [player.id]: {
+          ...prevStats,
+          matches: [...prevStats.matches, ...newMatches],
+          hasMore: Boolean(data.hasMore),
+        },
+      };
+    });
+    return newMatches.length;
+  };
+
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {
       setSortDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -286,6 +347,7 @@ export default function TftHome() {
                       onToggle={() =>
                         setExpandedId((id) => (id === p.id ? null : p.id))
                       }
+                      onLoadMoreMatches={() => loadMoreMatches(p)}
                     />
                   ))}
                 </tbody>
@@ -304,6 +366,7 @@ export default function TftHome() {
                   lpGap={lpGapById[p.id] ?? { toNext: null, toPrevious: null }}
                   expanded={expandedId === p.id}
                   onToggle={() => setExpandedId((id) => (id === p.id ? null : p.id))}
+                  onLoadMoreMatches={() => loadMoreMatches(p)}
                 />
               ))}
             </div>
