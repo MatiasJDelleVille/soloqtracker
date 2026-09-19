@@ -14,6 +14,9 @@ import type { TftStats } from "@/lib/tft";
 // client's polling cadence so a cache-miss recompute happens roughly once
 // per poll cycle instead of piling up extra ones inside the same window.
 const STATS_CACHE_TTL_SECONDS = 20 * 60;
+// While the match cache is still warming up the sample is partial, so it's
+// only kept briefly and the next load fetches the next batch of matches.
+const PARTIAL_STATS_CACHE_TTL_SECONDS = 60;
 const DISPLAY_MATCH_COUNT = 10;
 
 export async function GET(req: NextRequest) {
@@ -70,7 +73,11 @@ export async function GET(req: NextRequest) {
       })),
     };
 
-    await setCachedStats(cacheKey, responseBody, STATS_CACHE_TTL_SECONDS);
+    await setCachedStats(
+      cacheKey,
+      responseBody,
+      recent.incomplete ? PARTIAL_STATS_CACHE_TTL_SECONDS : STATS_CACHE_TTL_SECONDS
+    );
     return NextResponse.json(responseBody);
   } catch (err) {
     return NextResponse.json(

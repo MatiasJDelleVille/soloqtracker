@@ -532,7 +532,7 @@ const TFT_MATCH_ID_WINDOW = 20;
 // The TFT key's rate limit (100 requests / 2 min) is shared by every tracked
 // player's refresh, so uncached match details are pulled a couple at a time
 // and the rest fill in on later refreshes (they're cached forever once fetched).
-const MAX_UNCACHED_MATCH_FETCHES = 2;
+const MAX_UNCACHED_MATCH_FETCHES = 6;
 
 function toLobbyPlayer(p: TftRawParticipant, assets: TftAssets): TftLobbyPlayer {
   const units = p.units.map((u) => {
@@ -585,6 +585,9 @@ export async function getTftRecentMatches(
   sampleSize: number;
   avgPlacement: number | null;
   winRate: number | null;
+  // True while some recent matches are still waiting to be fetched, so the
+  // sample is smaller than it will be once the match cache warms up.
+  incomplete: boolean;
 }> {
   const region = platformToRegion(platform);
   const key = tftApiKey();
@@ -615,6 +618,7 @@ export async function getTftRecentMatches(
   // Stop at the first match that's still unfetched: per-match LP attribution
   // assumes the list holds every ranked game in order, with no gaps.
   const available: TftRawMatch[] = [];
+  const incomplete = matchIds.some((id) => !(id in cachedMatches) && !(id in freshById));
   for (const id of matchIds) {
     const match = (cachedMatches[id] ?? freshById[id]) as TftRawMatch | undefined;
     if (!match) break;
@@ -647,6 +651,7 @@ export async function getTftRecentMatches(
   const placements = matches.map((m) => m.placement);
   return {
     matches,
+    incomplete,
     sampleSize: placements.length,
     avgPlacement:
       placements.length > 0 ? placements.reduce((a, b) => a + b, 0) / placements.length : null,
