@@ -626,7 +626,14 @@ export async function getTftRankedIndex(
     }
   }
 
-  const toFetch = unindexed.filter((id) => !(id in newMetas)).slice(0, MAX_UNCACHED_MATCH_FETCHES);
+  // Ids come newest first, so once a match from an older set shows up nothing
+  // after it can belong to the current one and there's no point indexing it.
+  const allMetas = { ...metas, ...newMetas };
+  const oldSetAt = ids.findIndex((id) => (allMetas[id]?.s ?? Infinity) < assets.currentSet);
+  const relevantIds = oldSetAt === -1 ? ids : ids.slice(0, oldSetAt);
+  const toFetch = relevantIds
+    .filter((id) => !(id in allMetas))
+    .slice(0, MAX_UNCACHED_MATCH_FETCHES);
   const fetched = await Promise.all(
     toFetch.map((id) =>
       riotFetch(`https://${region}.api.riotgames.com/tft/match/v1/matches/${id}`, key)
@@ -650,6 +657,7 @@ export async function getTftRankedIndex(
       incomplete = true;
       break;
     }
+    if (meta.s < assets.currentSet) break;
     const placement = meta.pl[puuid];
     if (meta.q === TFT_RANKED_QUEUE_ID && meta.s === assets.currentSet && placement != null) {
       rankedIds.push(id);
