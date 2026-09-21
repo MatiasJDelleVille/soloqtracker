@@ -35,16 +35,37 @@ function tftApiKey(): string {
   return key;
 }
 
+const RIOT_MAX_ATTEMPTS = 3;
+
 async function riotFetch(url: string, key: string = apiKey()) {
-  const res = await fetch(url, {
-    headers: { "X-Riot-Token": key },
-    next: { revalidate: 0 },
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Riot API ${res.status}: ${body}`);
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= RIOT_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { "X-Riot-Token": key },
+        next: { revalidate: 0 },
+      });
+      if (res.ok) return res.json();
+
+      // Riot's gateway (Cloudflare) sometimes times out or hiccups; those are
+      // transient, so retry them. 4xx (including 429) are not retried here.
+      if (res.status >= 500 && attempt < RIOT_MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+        continue;
+      }
+      const body = await res.text();
+      // Gateway errors come back as a full HTML page; don't surface that.
+      const detail = body.trimStart().startsWith("<") ? "" : `: ${body}`;
+      throw new Error(`Riot API ${res.status}${detail}`);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      // Only network-level failures (fetch itself throwing) are retried here;
+      // an HTTP error thrown above has already exhausted its attempts.
+      if (lastError.message.startsWith("Riot API ") || attempt === RIOT_MAX_ATTEMPTS) throw lastError;
+      await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+    }
   }
-  return res.json();
+  throw lastError ?? new Error("Riot API request failed");
 }
 
 export async function getAccountByRiotId(
