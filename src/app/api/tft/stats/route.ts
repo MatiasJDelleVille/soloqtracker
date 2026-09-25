@@ -73,8 +73,6 @@ export async function GET(req: NextRequest) {
         ? await trackLpPerMatch(puuid, index.rankedIds, currentTotalLp, "tft")
         : await getLpPerMatch(puuid, pageIds, "tft");
 
-    // In TFT ranked, Riot counts every top-4 finish as a "win".
-    const rankedGames = ranked ? ranked.wins + ranked.losses : 0;
     const games = index.placements.length;
 
     const responseBody: NonNullable<TftStats> = {
@@ -87,7 +85,10 @@ export async function GET(req: NextRequest) {
         games,
         avgPlacement: games > 0 ? index.placements.reduce((a, b) => a + b, 0) / games : null,
         winRate: games > 0 ? index.placements.filter((p) => p === 1).length / games : null,
-        top4Rate: ranked && rankedGames > 0 ? ranked.wins / rankedGames : null,
+        // Computed from the same indexed sample as avgPlacement/winRate
+        // (Riot's league wins/losses count the whole set, which can be
+        // ahead of what we've indexed locally and disagree with "games").
+        top4Rate: games > 0 ? index.placements.filter((p) => p <= 4).length / games : null,
       },
       matches: details.map((m) => ({ ...m, lpChange: lpDeltas[m.matchId] ?? null })),
     };
