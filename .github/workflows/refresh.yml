@@ -1,0 +1,25 @@
+name: Refresh player stats
+
+# Vercel's Hobby plan only allows daily Cron Jobs, which isn't frequent
+# enough to attribute LP to the right match (see src/lib/kv.ts) or to fully
+# backfill a TFT set's match history. GitHub Actions has no such limit, so
+# it pings the app's own cron endpoint instead.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call refresh endpoint
+        run: |
+          status=$(curl -s -o response.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://soloqtracker.vercel.app/api/cron/refresh")
+          cat response.json
+          if [ "$status" -ge 300 ]; then
+            echo "Refresh endpoint returned HTTP $status"
+            exit 1
+          fi

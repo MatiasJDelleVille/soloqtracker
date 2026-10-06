@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import type { Player } from "@/lib/kv";
 import TftPlayerRow, { type TftStats } from "@/components/TftPlayerRow";
 import TftPlayerCardMobile from "@/components/TftPlayerCardMobile";
+import NextUpdateTimer from "@/components/NextUpdateTimer";
 import { computeLpGaps, eloScore } from "@/lib/rank";
+
+// Matches the server cron's cadence (.github/workflows/refresh.yml) so the
+// client poll is just picking up data the backend already refreshed, not
+// triggering the Riot lookups itself.
+const POLL_MS = 30 * 60 * 1000;
 
 type SortKey = "elo" | "top4" | "win" | "avgPlacement";
 
@@ -57,6 +63,7 @@ export default function TftHome() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filter, setFilter] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [lastLoadAt, setLastLoadAt] = useState<number | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("tft-sort");
@@ -108,15 +115,11 @@ export default function TftHome() {
           }
           setStatsMap(nextStats);
           setErrorMap(nextErrors);
+          setLastLoadAt(Date.now());
         })
         .finally(() => setLoading(false));
 
     loadAll();
-    // Every open tab counts against Redis's monthly command quota (shared
-    // across everyone tracking this group), so the interval has to stay
-    // conservative — this matches the original cadence, now much cheaper
-    // per call after batching the match-detail lookups into one command.
-    const POLL_MS = 20 * 60 * 1000;
     let lastLoad = Date.now();
     const interval = setInterval(() => {
       if (document.hidden) return;
@@ -248,7 +251,8 @@ export default function TftHome() {
             ← Ver SoloQ
           </a>
         </div>
-        <p className="text-white/40 mb-8">Progreso de kukamigos en el SoloQ Challenge</p>
+        <p className="text-white/40 mb-2">Progreso de kukamigos en el SoloQ Challenge</p>
+        <NextUpdateTimer lastLoadAt={lastLoadAt} intervalMs={POLL_MS} />
 
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <input
