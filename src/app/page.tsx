@@ -61,7 +61,6 @@ export default function Home() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filter, setFilter] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [lastLoadAt, setLastLoadAt] = useState<number | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("soloq-sort");
@@ -116,7 +115,6 @@ export default function Home() {
           }
           setStatsMap(nextStats);
           setErrorMap(nextErrors);
-          setLastLoadAt(Date.now());
         })
         .finally(() => setLoading(false));
 
@@ -216,7 +214,7 @@ export default function Home() {
           </a>
         </div>
         <p className="text-white/40 mb-2">Progreso de kukamigos en el SoloQ Challenge</p>
-        <NextUpdateTimer lastLoadAt={lastLoadAt} intervalMs={POLL_MS} />
+        <NextUpdateTimer intervalMs={POLL_MS} />
 
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <input
