@@ -89,16 +89,68 @@ export async function getCachedMatches(
   return result;
 }
 
+/**
+ * ttlSeconds bounds the raw match blobs (the "match"/"tft-match" prefixes,
+ * tens of KB each) so Redis reclaims them on its own instead of growing
+ * forever — that's what tripped Upstash's free-tier storage quota. Omit it
+ * for small, long-lived data like "tft-meta" (a few bytes per match, needed
+ * indefinitely to compute set-long stats).
+ */
 export async function cacheMatches(
   matches: Record<string, unknown>,
-  prefix = "match"
+  prefix = "match",
+  ttlSeconds?: number
 ): Promise<void> {
   const entries = Object.entries(matches);
   if (entries.length === 0) return;
+  if (ttlSeconds) {
+    // mset has no per-key TTL, so each entry needs its own SET EX here.
+    const pipeline = redis.pipeline();
+    for (const [id, data] of entries) pipeline.set(`${prefix}:${id}`, data, { ex: ttlSeconds });
+    await pipeline.exec();
+    return;
+  }
   // Same reasoning as getCachedMatches: one MSET instead of one SET per match.
   const kv: Record<string, unknown> = {};
   for (const [id, data] of entries) kv[`${prefix}:${id}`] = data;
   await redis.mset(kv);
+}
+
+/**
+ * One-time reclaim for the storage already used before the TTL above
+ * existed: raw match blobs from a TFT set that's no longer the current one
+ * are permanently unreachable (getTftRankedIndex stops walking a player's
+ * match history the moment it hits the set boundary), so deleting them is
+ * safe. Their tiny "tft-meta" entries go too since nothing reads a stale
+ * match's meta either.
+ */
+export async function deleteStalePreviousSetTftMatches(
+  currentSet: number
+): Promise<{ scanned: number; deleted: number }> {
+  let cursor = "0";
+  let scanned = 0;
+  let deleted = 0;
+  do {
+    const [next, keys] = await redis.scan(cursor, { match: "tft-meta:*", count: 200 });
+    cursor = next;
+    if (keys.length > 0) {
+      scanned += keys.length;
+      const ids = keys.map((k) => k.slice("tft-meta:".length));
+      const metas = await redis.mget<Array<{ s?: number } | null>>(...keys);
+      const staleIds = ids.filter((_, i) => {
+        const s = metas[i]?.s;
+        return typeof s === "number" && s < currentSet;
+      });
+      if (staleIds.length > 0) {
+        await redis.del(
+          ...staleIds.map((id) => `tft-meta:${id}`),
+          ...staleIds.map((id) => `tft-match:${id}`)
+        );
+        deleted += staleIds.length;
+      }
+    }
+  } while (cursor !== "0");
+  return { scanned, deleted };
 }
 
 type LpPointer = { lastMatchId: string; lastLp: number };

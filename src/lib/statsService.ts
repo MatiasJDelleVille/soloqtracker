@@ -81,7 +81,7 @@ export async function computeTftStats(puuid: string, region: string) {
     getTftRankedEntries(puuid, region),
     getTftSummonerProfile(puuid, region),
     getLatestDdragonVersion(),
-    getTftMatchDetails(puuid, pageIds),
+    getTftMatchDetails(puuid, region, pageIds),
   ]);
 
   // Only standard ranked LP can be attributed to the ranked matches shown;

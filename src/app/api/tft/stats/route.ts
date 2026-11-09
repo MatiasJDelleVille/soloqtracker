@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     const ttl = index.incomplete ? PARTIAL_STATS_CACHE_TTL_SECONDS : STATS_CACHE_TTL_SECONDS;
 
     const [details, lpDeltas] = await Promise.all([
-      getTftMatchDetails(puuid, pageIds),
+      getTftMatchDetails(puuid, region, pageIds),
       getLpPerMatch(puuid, pageIds, "tft"),
     ]);
     const body = {

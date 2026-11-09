@@ -17,6 +17,11 @@ const PLATFORM_TO_REGION: Record<string, string> = {
 
 export const PLATFORMS = Object.keys(PLATFORM_TO_REGION);
 
+// Raw match blobs (tens of KB each) don't need to live forever — only the
+// small derived "tft-meta" entries do, for season-long stats. Bounding these
+// is what keeps Redis storage from growing without end.
+const RAW_MATCH_BLOB_TTL_SECONDS = 90 * 24 * 60 * 60;
+
 function platformToRegion(platform: string): string {
   const region = PLATFORM_TO_REGION[platform];
   if (!region) throw new Error(`Unknown platform: ${platform}`);
@@ -266,7 +271,7 @@ export async function getRecentRankedMatches(
   missingIds.forEach((id, i) => {
     freshById[id] = freshlyFetched[i];
   });
-  await cacheMatches(freshById);
+  await cacheMatches(freshById, "match", RAW_MATCH_BLOB_TTL_SECONDS);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const matches = matchIds.map((id) => (cachedMatches[id] ?? freshById[id]) as any);
@@ -489,6 +494,12 @@ function getTftAssets(): Promise<TftAssets> {
   return tftAssetsPromise;
 }
 
+/** Exposed so a one-time storage-reclaim pass can tell which cached TFT
+ * matches belong to a set that's no longer current. */
+export async function getCurrentTftSet(): Promise<number> {
+  return (await getTftAssets()).currentSet;
+}
+
 export async function getAccountByRiotIdTft(
   gameName: string,
   tagLine: string,
@@ -665,7 +676,10 @@ export async function getTftRankedIndex(
     freshFull[id] = fetched[i];
     newMetas[id] = toMatchMeta(fetched[i] as TftRawMatch);
   });
-  await Promise.all([cacheMatches(freshFull, "tft-match"), cacheMatches(newMetas, "tft-meta")]);
+  await Promise.all([
+    cacheMatches(freshFull, "tft-match", RAW_MATCH_BLOB_TTL_SECONDS),
+    cacheMatches(newMetas, "tft-meta"),
+  ]);
 
   // Stop at the first match that's still unindexed: per-match LP attribution
   // assumes the list holds every ranked game in order, with no gaps.
@@ -690,12 +704,34 @@ export async function getTftRankedIndex(
 
 export async function getTftMatchDetails(
   puuid: string,
+  platform: string,
   matchIds: string[]
 ): Promise<Array<Omit<TftMatch, "lpChange">>> {
+  const region = platformToRegion(platform);
+  const key = tftApiKey();
   const [cached, assets] = await Promise.all([
     getCachedMatches(matchIds, "tft-match"),
     getTftAssets(),
   ]);
+
+  // matchIds only ever come from this set's rankedIds (see
+  // getTftRankedIndex), so a cache miss here means the raw blob's TTL
+  // expired, not that the match is stale — refetch it like the LoL path does.
+  const missingIds = matchIds.filter((id) => !(id in cached));
+  if (missingIds.length > 0) {
+    const fetched = await Promise.all(
+      missingIds.map((id) =>
+        riotFetch(`https://${region}.api.riotgames.com/tft/match/v1/matches/${id}`, key)
+      )
+    );
+    const freshById: Record<string, unknown> = {};
+    missingIds.forEach((id, i) => {
+      freshById[id] = fetched[i];
+      cached[id] = fetched[i];
+    });
+    await cacheMatches(freshById, "tft-match", RAW_MATCH_BLOB_TTL_SECONDS);
+  }
+
   return matchIds.flatMap((id) => {
     const m = cached[id] as TftRawMatch | undefined;
     if (!m) return [];
