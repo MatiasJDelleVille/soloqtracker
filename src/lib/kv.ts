@@ -153,6 +153,45 @@ export async function deleteStalePreviousSetTftMatches(
   return { scanned, deleted };
 }
 
+/**
+ * Same kind of one-time reclaim as deleteStalePreviousSetTftMatches, but for
+ * LoL, which has no "set" boundary to key off. Instead it reads each raw
+ * match blob's own gameCreation timestamp and drops ones older than
+ * maxAgeMs. This is safe even for a match someone does page back to: the
+ * cache-miss path in getRecentRankedMatches just refetches it from Riot and
+ * re-caches it, the same as if its TTL had expired on its own.
+ */
+export async function deleteStaleLolMatches(
+  maxAgeMs: number
+): Promise<{ scanned: number; deleted: number }> {
+  const cutoff = Date.now() - maxAgeMs;
+  let cursor = "0";
+  let scanned = 0;
+  let deleted = 0;
+  do {
+    // Smaller batch than the TFT meta scan: these are full match blobs
+    // (tens of KB each), not a few bytes, so MGET-ing too many at once risks
+    // the function's response/memory limits.
+    const [next, keys] = await redis.scan(cursor, { match: "match:*", count: 50 });
+    cursor = next;
+    if (keys.length > 0) {
+      scanned += keys.length;
+      const blobs = await redis.mget<Array<{ info?: { gameCreation?: number } } | null>>(
+        ...keys
+      );
+      const staleKeys = keys.filter((_, i) => {
+        const created = blobs[i]?.info?.gameCreation;
+        return typeof created === "number" && created < cutoff;
+      });
+      if (staleKeys.length > 0) {
+        await redis.del(...staleKeys);
+        deleted += staleKeys.length;
+      }
+    }
+  } while (cursor !== "0");
+  return { scanned, deleted };
+}
+
 type LpPointer = { lastMatchId: string; lastLp: number };
 
 /**
