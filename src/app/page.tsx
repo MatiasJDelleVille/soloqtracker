@@ -11,7 +11,7 @@ import { computeLpGaps, eloScore } from "@/lib/rank";
 // Matches the server cron's cadence (.github/workflows/refresh.yml) so the
 // client poll is just picking up data the backend already refreshed, not
 // triggering the Riot lookups itself.
-const POLL_MS = 30 * 60 * 1000;
+const POLL_MS = 10 * 60 * 1000;
 
 type RankedEntry = NonNullable<NonNullable<Stats>["ranked"]>;
 

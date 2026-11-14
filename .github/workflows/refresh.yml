@@ -4,9 +4,18 @@ name: Refresh player stats
 # enough to attribute LP to the right match (see src/lib/kv.ts) or to fully
 # backfill a TFT set's match history. GitHub Actions has no such limit, so
 # it pings the app's own cron endpoint instead.
+#
+# 10 minutes rather than 30: trackLpPerMatch can only attribute LP when
+# exactly one new ranked game appears between checks, and a LoL game takes
+# at least ~15-20 minutes — at a 30-minute cadence, anyone queuing more than
+# one game in a sitting routinely had two+ games finish in the same window,
+# which isn't just ambiguous, it's unrecoverable (the pointer still jumps to
+# the newest game regardless, so the skipped ones never get a value). 10
+# minutes comfortably outruns that for anyone but back-to-back dodge/remake
+# sessions.
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 jobs:

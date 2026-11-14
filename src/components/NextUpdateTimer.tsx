@@ -8,10 +8,10 @@ import { useEffect, useState } from "react";
  * so viewers don't need to reload for LP tracking to stay accurate — this
  * just shows when the next update lands.
  *
- * Counts down to the next fixed clock boundary (e.g. every 30 min lands on
- * :00/:30) instead of "intervalMs since this browser's last fetch", so an F5
- * — which still happily reads the shared cache, no Riot calls involved —
- * doesn't push the displayed countdown back out.
+ * Counts down to the next fixed clock boundary (e.g. every 10 min lands on
+ * :00/:10/:20/...) instead of "intervalMs since this browser's last fetch",
+ * so an F5 — which still happily reads the shared cache, no Riot calls
+ * involved — doesn't push the displayed countdown back out.
  */
 export default function NextUpdateTimer({ intervalMs }: { intervalMs: number }) {
   // Starts null so the server-rendered markup (no "now" to count down from)
