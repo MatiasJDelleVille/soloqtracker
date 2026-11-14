@@ -12,12 +12,20 @@ on:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        game: [lol, tft]
     steps:
-      - name: Call refresh endpoint
+      # Each roster gets its own request (and its own 60s Vercel function
+      # timeout) instead of sharing one — as the tracked roster grew, doing
+      # both in a single call started occasionally missing the Hobby-plan
+      # 60s cap.
+      - name: Call refresh endpoint (${{ matrix.game }})
         run: |
           status=$(curl -s -o response.json -w "%{http_code}" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "https://soloqtracker.vercel.app/api/cron/refresh")
+            "https://soloqtracker.vercel.app/api/cron/refresh?game=${{ matrix.game }}")
           cat response.json
           if [ "$status" -ge 300 ]; then
             echo "Refresh endpoint returned HTTP $status"

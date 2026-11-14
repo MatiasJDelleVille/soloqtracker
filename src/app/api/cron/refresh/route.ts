@@ -45,6 +45,14 @@ async function refreshAll(
  * single match directly, so trackLpPerMatch has to see the roster often
  * enough that at most one new ranked game appears between checks — otherwise
  * it can't tell which game caused the LP change and leaves it blank.
+ *
+ * `?game=lol` or `?game=tft` refreshes only that roster. The workflow calls
+ * both in parallel as separate requests — as the tracked roster grew, doing
+ * LoL and TFT together in one request (even though they already ran
+ * concurrently inside it) started occasionally missing Vercel's 60s
+ * (Hobby-plan) function timeout. Splitting them gives each its own 60s
+ * budget instead of sharing one. Omitting the param keeps the old combined
+ * behavior for manual/browser testing.
  */
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -53,9 +61,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
+  const game = req.nextUrl.searchParams.get("game");
+  const runLol = game !== "tft";
+  const runTft = game !== "lol";
+
   const [lolPlayers, tftPlayers] = await Promise.all([
-    getPlayers(LOL_PLAYERS_KEY),
-    getPlayers(TFT_PLAYERS_KEY),
+    runLol ? getPlayers(LOL_PLAYERS_KEY) : Promise.resolve([]),
+    runTft ? getPlayers(TFT_PLAYERS_KEY) : Promise.resolve([]),
   ]);
 
   const [lol, tft] = await Promise.all([
