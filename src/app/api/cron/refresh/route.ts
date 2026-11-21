@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getPlayers, type Player } from "@/lib/kv";
 import { computeLolStats, computeTftStats } from "@/lib/statsService";
 
@@ -70,13 +70,26 @@ export async function GET(req: NextRequest) {
     runTft ? getPlayers(TFT_PLAYERS_KEY) : Promise.resolve([]),
   ]);
 
-  const [lol, tft] = await Promise.all([
-    refreshAll(lolPlayers, computeLolStats),
-    refreshAll(tftPlayers, computeTftStats),
-  ]);
+  // Respond right away and do the Riot calls after the response is sent.
+  // External schedulers (cron-job.org's free plan cuts requests off at 30s)
+  // would otherwise time out while the refresh is still running. The work
+  // keeps its own maxDuration budget inside after().
+  after(async () => {
+    const [lol, tft] = await Promise.all([
+      refreshAll(lolPlayers, computeLolStats),
+      refreshAll(tftPlayers, computeTftStats),
+    ]);
+    const failed = [...lol, ...tft].filter((r) => !r.ok);
+    console.log(
+      `[cron/refresh] game=${game ?? "all"} lol=${lol.length} tft=${tft.length} failed=${failed.length}`,
+      failed.length ? JSON.stringify(failed) : ""
+    );
+  });
 
   return NextResponse.json({
-    lol: { total: lol.length, ok: lol.filter((r) => r.ok).length, results: lol },
-    tft: { total: tft.length, ok: tft.filter((r) => r.ok).length, results: tft },
+    accepted: true,
+    game: game ?? "all",
+    lol: lolPlayers.length,
+    tft: tftPlayers.length,
   });
 }
