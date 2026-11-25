@@ -1,3 +1,4 @@
+import { gunzipSync, gzipSync } from "node:zlib";
 import { Redis } from "@upstash/redis";
 
 const redis = new Redis({
@@ -14,6 +15,23 @@ export type Player = {
   created_at: string;
 };
 
+// Upstash's free tier caps monthly bandwidth, and match blobs and stats bodies
+// are big, repetitive JSON, so they're stored gzipped (roughly 5x smaller).
+const GZIP_PREFIX = "gz:";
+// "tft-meta" entries are a few hundred bytes each, too small to gain anything.
+const COMPRESSED_MATCH_PREFIXES = new Set(["match", "tft-match"]);
+
+function pack(value: unknown): string {
+  return GZIP_PREFIX + gzipSync(JSON.stringify(value)).toString("base64");
+}
+
+/** Values written before compression existed come back as-is. */
+function unpack(value: unknown): unknown {
+  if (typeof value !== "string" || !value.startsWith(GZIP_PREFIX)) return value;
+  const compressed = Buffer.from(value.slice(GZIP_PREFIX.length), "base64");
+  return JSON.parse(gunzipSync(compressed).toString("utf8"));
+}
+
 async function getList(key: string): Promise<Player[]> {
   const list = await redis.get<Player[]>(key);
   return list ?? [];
@@ -28,7 +46,7 @@ async function getList(key: string): Promise<Player[]> {
  * quick client-side polling) share one upstream call.
  */
 export async function getCachedStats<T>(key: string): Promise<T | null> {
-  return (await redis.get<T>(key)) ?? null;
+  return (unpack(await redis.get(key)) as T | null) ?? null;
 }
 
 export async function setCachedStats(
@@ -36,7 +54,26 @@ export async function setCachedStats(
   data: unknown,
   ttlSeconds: number
 ): Promise<void> {
-  await redis.set(key, data, { ex: ttlSeconds });
+  await redis.set(key, pack(data), { ex: ttlSeconds });
+}
+
+/** Extends a cached stats body without moving it over the wire. False if it's gone. */
+export async function touchCachedStats(key: string, ttlSeconds: number): Promise<boolean> {
+  return (await redis.expire(key, ttlSeconds)) === 1;
+}
+
+/**
+ * What the cron last saw for each player of one game, kept under a single key
+ * so a run where nobody played costs one read instead of one per player.
+ */
+export type RefreshState = Record<string, { signature: string; touchedAt: number }>;
+
+export async function getRefreshState(game: "lol" | "tft"): Promise<RefreshState> {
+  return (await redis.get<RefreshState>(`cron-state:${game}`)) ?? {};
+}
+
+export async function setRefreshState(game: "lol" | "tft", state: RefreshState): Promise<void> {
+  await redis.set(`cron-state:${game}`, state);
 }
 
 export async function getPlayers(key: string): Promise<Player[]> {
@@ -83,9 +120,24 @@ export async function getCachedMatches(
   // what was burning through the monthly command limit.
   const values = await redis.mget<unknown[]>(...matchIds.map((id) => `${prefix}:${id}`));
   const result: Record<string, unknown> = {};
+  const uncompressed: Array<[string, unknown]> = [];
   matchIds.forEach((id, i) => {
-    if (values[i] != null) result[id] = values[i];
+    const value = values[i];
+    if (value == null) return;
+    result[id] = unpack(value);
+    if (COMPRESSED_MATCH_PREFIXES.has(prefix) && typeof value !== "string") {
+      uncompressed.push([id, value]);
+    }
   });
+  // Blobs stored before compression are rewritten the first time they're read,
+  // keeping whatever expiry they already had.
+  if (uncompressed.length > 0) {
+    const pipeline = redis.pipeline();
+    for (const [id, value] of uncompressed) {
+      pipeline.set(`${prefix}:${id}`, pack(value), { keepTtl: true });
+    }
+    await pipeline.exec();
+  }
   return result;
 }
 
@@ -106,7 +158,10 @@ export async function cacheMatches(
   if (ttlSeconds) {
     // mset has no per-key TTL, so each entry needs its own SET EX here.
     const pipeline = redis.pipeline();
-    for (const [id, data] of entries) pipeline.set(`${prefix}:${id}`, data, { ex: ttlSeconds });
+    for (const [id, data] of entries) {
+      const value = COMPRESSED_MATCH_PREFIXES.has(prefix) ? pack(data) : data;
+      pipeline.set(`${prefix}:${id}`, value, { ex: ttlSeconds });
+    }
     await pipeline.exec();
     return;
   }
@@ -176,9 +231,9 @@ export async function deleteStaleLolMatches(
     cursor = next;
     if (keys.length > 0) {
       scanned += keys.length;
-      const blobs = await redis.mget<Array<{ info?: { gameCreation?: number } } | null>>(
-        ...keys
-      );
+      const blobs = (await redis.mget<unknown[]>(...keys)).map(unpack) as Array<{
+        info?: { gameCreation?: number };
+      } | null>;
       const staleKeys = keys.filter((_, i) => {
         const created = blobs[i]?.info?.gameCreation;
         return typeof created === "number" && created < cutoff;

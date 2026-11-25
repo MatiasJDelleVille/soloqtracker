@@ -95,6 +95,25 @@ export async function getSummonerProfile(puuid: string, platform: string) {
   return summoner;
 }
 
+/** Newest ranked SoloQ match id only: a cheap way to tell if a player has played. */
+export async function getLatestRankedMatchId(puuid: string, platform: string) {
+  const region = platformToRegion(platform);
+  const ids = (await riotFetch(
+    `https://${region}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?queue=420&start=0&count=1`
+  )) as string[];
+  return ids[0] ?? null;
+}
+
+/** Same idea for TFT. The newest id of any queue is enough to detect activity. */
+export async function getLatestTftMatchId(puuid: string, platform: string) {
+  const region = platformToRegion(platform);
+  const ids = (await riotFetch(
+    `https://${region}.api.riotgames.com/tft/match/v1/matches/by-puuid/${puuid}/ids?count=1`,
+    tftApiKey()
+  )) as string[];
+  return ids[0] ?? null;
+}
+
 let cachedDdragonVersion: string | null = null;
 
 export async function getLatestDdragonVersion() {

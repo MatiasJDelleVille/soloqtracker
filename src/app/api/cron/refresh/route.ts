@@ -1,13 +1,39 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { getPlayers, type Player } from "@/lib/kv";
-import { computeLolStats, computeTftStats } from "@/lib/statsService";
+import {
+  getPlayers,
+  getRefreshState,
+  setRefreshState,
+  touchCachedStats,
+  type Player,
+} from "@/lib/kv";
+import {
+  STATS_CACHE_TTL_SECONDS,
+  checkLolPlayer,
+  checkTftPlayer,
+  computeLolStats,
+  computeTftStats,
+  lolStatsCacheKey,
+  tftStatsCacheKey,
+} from "@/lib/statsService";
 
 export const maxDuration = 60;
 
 const LOL_PLAYERS_KEY = "players:lol";
 const TFT_PLAYERS_KEY = "players:tft";
 
-type RefreshResult = { id: string; ok: boolean; error?: string };
+// An unchanged player's cached stats get their expiry extended this often,
+// comfortably before STATS_CACHE_TTL_SECONDS runs out.
+const TOUCH_AFTER_MS = 2 * 60 * 60 * 1000;
+
+type RefreshResult = { id: string; ok: boolean; skipped?: boolean; error?: string };
+
+type Game<Profile> = {
+  name: "lol" | "tft";
+  cacheKey: (puuid: string, region: string) => string;
+  check: (puuid: string, region: string) => Promise<{ signature: string; profile: Profile }>;
+  // Resolves to false while the result is still partial and needs another run.
+  compute: (puuid: string, region: string, profile: Profile) => Promise<boolean>;
+};
 
 /**
  * Refreshes every tracked player one at a time instead of in parallel.
@@ -15,31 +41,82 @@ type RefreshResult = { id: string; ok: boolean; error?: string };
  * bursting N requests at once is what used to trip it when several browser
  * tabs polled together; a small stagger here keeps a single cron run safe
  * even as the roster grows.
+ *
+ * Players with nothing new are skipped: recomputing everyone on every run is
+ * what used up Redis's monthly bandwidth in a few days.
  */
-async function refreshAll(
+async function refreshAll<Profile>(
   players: Player[],
-  compute: (puuid: string, region: string) => Promise<unknown>
+  game: Game<Profile>
 ): Promise<RefreshResult[]> {
+  if (players.length === 0) return [];
+  const state = await getRefreshState(game.name);
+  let stateChanged = false;
   const results: RefreshResult[] = [];
-  for (const player of players) {
+
+  for (const { id, puuid, region } of players) {
     try {
-      await compute(player.puuid, player.region);
-      results.push({ id: player.id, ok: true });
+      const { signature, profile } = await game.check(puuid, region);
+      const previous = state[puuid];
+      const unchanged = previous?.signature === signature;
+
+      if (unchanged && Date.now() - previous.touchedAt < TOUCH_AFTER_MS) {
+        results.push({ id, ok: true, skipped: true });
+      } else if (
+        unchanged &&
+        (await touchCachedStats(game.cacheKey(puuid, region), STATS_CACHE_TTL_SECONDS))
+      ) {
+        state[puuid] = { signature, touchedAt: Date.now() };
+        stateChanged = true;
+        results.push({ id, ok: true, skipped: true });
+      } else {
+        if (await game.compute(puuid, region, profile)) {
+          state[puuid] = { signature, touchedAt: Date.now() };
+        } else {
+          delete state[puuid];
+        }
+        stateChanged = true;
+        results.push({ id, ok: true });
+      }
     } catch (err) {
       results.push({
-        id: player.id,
+        id,
         ok: false,
         error: err instanceof Error ? err.message : "Error desconocido",
       });
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
+
+  if (stateChanged) await setRefreshState(game.name, state);
   return results;
 }
 
+type ProfileOf<Check extends (...args: never[]) => Promise<{ profile: unknown }>> = Awaited<
+  ReturnType<Check>
+>["profile"];
+
+const LOL_GAME: Game<ProfileOf<typeof checkLolPlayer>> = {
+  name: "lol",
+  cacheKey: (puuid, region) => lolStatsCacheKey(puuid, region),
+  check: checkLolPlayer,
+  compute: async (puuid, region, profile) => {
+    await computeLolStats(puuid, region, profile);
+    return true;
+  },
+};
+
+const TFT_GAME: Game<ProfileOf<typeof checkTftPlayer>> = {
+  name: "tft",
+  cacheKey: (puuid, region) => tftStatsCacheKey(puuid, region),
+  check: checkTftPlayer,
+  compute: async (puuid, region, profile) =>
+    !(await computeTftStats(puuid, region, profile)).incomplete,
+};
+
 /**
  * Runs the same per-player stats computation the site does on page load, but
- * on a schedule (see .github/workflows/refresh.yml) instead of only when a
+ * on a schedule (cron-job.org calls this route) instead of only when a
  * visitor has a tab open. This is what makes LP-per-match tracking and the
  * TFT match-history backfill reliable: Riot never exposes LP gained in a
  * single match directly, so trackLpPerMatch has to see the roster often
@@ -76,12 +153,13 @@ export async function GET(req: NextRequest) {
   // keeps its own maxDuration budget inside after().
   after(async () => {
     const [lol, tft] = await Promise.all([
-      refreshAll(lolPlayers, computeLolStats),
-      refreshAll(tftPlayers, computeTftStats),
+      refreshAll(lolPlayers, LOL_GAME),
+      refreshAll(tftPlayers, TFT_GAME),
     ]);
     const failed = [...lol, ...tft].filter((r) => !r.ok);
+    const skipped = [...lol, ...tft].filter((r) => r.skipped).length;
     console.log(
-      `[cron/refresh] game=${game ?? "all"} lol=${lol.length} tft=${tft.length} failed=${failed.length}`,
+      `[cron/refresh] game=${game ?? "all"} lol=${lol.length} tft=${tft.length} unchanged=${skipped} failed=${failed.length}`,
       failed.length ? JSON.stringify(failed) : ""
     );
   });
